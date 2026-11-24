@@ -1,6 +1,8 @@
 // Runs on a schedule in GitHub Actions: reads the ThoughtDrop gist, pushes anything that just came due,
 // marks it notified, and drops dead device subscriptions.
 import webpush from 'web-push';
+import { createRequire } from 'module';
+const Recur = createRequire(import.meta.url)('../recur.js');
 
 const { GIST_TOKEN, VAPID_PRIVATE_KEY } = process.env;
 const FN = 'thoughtdrop.json';
@@ -24,6 +26,7 @@ const g = await gh(`/gists/${id}`);
 const f = g.files[FN];
 const text = f.truncated ? await (await fetch(f.raw_url, { headers: { Authorization: `Bearer ${GIST_TOKEN}` } })).text() : f.content;
 const data = JSON.parse(text);
+if (data.settings && data.settings.tz) process.env.TZ = data.settings.tz; // repeat dates follow your phone's time zone
 const pub = data.settings && data.settings.vapid && data.settings.vapid.pub;
 if (!pub) { console.log('No push key created in the app yet.'); process.exit(0); }
 webpush.setVapidDetails('mailto:noreply@github.com', pub, VAPID_PRIVATE_KEY);
@@ -31,10 +34,18 @@ const subs = data.subs || {};
 data.tomb ||= {};
 const now = Date.now(), DAY = 864e5;
 
+let changed = false;
+// Repeating items that were missed for more than a day: roll them forward quietly.
+for (const n of data.notes || []) {
+  if (n.repeat && n.due && !n.done && !n.archived && Date.parse(n.due) <= now - DAY) {
+    if (!Recur.advance(n, now)) n.notified = true;
+    n.updated = now; changed = true;
+  }
+}
 const due = (data.notes || []).filter(n => n.due && !n.done && !n.archived && !n.notified
   && Date.parse(n.due) <= now && Date.parse(n.due) > now - DAY);
 console.log(`${due.length} due, ${Object.keys(subs).length} device(s)`);
-if (!due.length) process.exit(0);
+if (!due.length && !changed) process.exit(0);
 
 const dead = new Set();
 for (const n of due) {
@@ -48,7 +59,8 @@ for (const n of due) {
       if (e.statusCode === 404 || e.statusCode === 410) dead.add(dev);
     }
   }
-  n.notified = true; n.updated = now;
+  if (!(n.repeat && Recur.advance(n, now))) n.notified = true; // repeating: schedule the next one
+  n.updated = now;
 }
 for (const dev of dead) { delete subs[dev]; data.tomb['sub-' + dev] = now; }
 

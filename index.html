@@ -62,6 +62,9 @@ main{flex:1;overflow-y:auto;width:100%}
 .card footer{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .due{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:700;color:var(--acc);white-space:nowrap}
 .due svg{width:14px;height:14px}.due.over{color:var(--warn)}
+.rep{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:600;color:var(--mute)}.rep svg{width:14px;height:14px}
+.wd{display:flex;gap:6px;flex-wrap:wrap}.wd button{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--bg);font-weight:700}.wd button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.inl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.inl input,.inl select{width:auto;flex:0 1 auto}
 .acts{margin-left:auto;display:flex;gap:2px}
 .ib{width:40px;height:40px;border:0;background:none;border-radius:12px;display:grid;place-items:center;color:var(--mute)}
 .ib:hover{background:var(--chip)}.ib.on{color:var(--acc)}
@@ -145,6 +148,7 @@ dialog h2{margin:0;font-size:20px}
 <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
 <symbol id="i-l" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
 <symbol id="i-r" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+<symbol id="i-rep" viewBox="0 0 24 24"><path d="M4 11V9a3 3 0 013-3h12l-3-3M20 13v2a3 3 0 01-3 3H5l3 3"/></symbol>
 </svg>
 <div class="top"><div class="logo"><b><svg class="i"><use href="#i-send"/></svg></b>ThoughtDrop</div><div class="sync" id="sync"><i></i><span>This device</span></div></div>
 <nav class="tabs" id="tabs"><a href="#feed">Feed</a><a href="#board">Board</a><a href="#calendar">Calendar</a><a href="#swipe">Swipe</a><a href="#prefs">Settings</a></nav>
@@ -156,9 +160,16 @@ dialog h2{margin:0;font-size:20px}
 <div class="fld"><label for="eText">Text <span id="eHint"></span></label><textarea id="eText"></textarea></div>
 <div class="fld"><label for="eTags">Tags (space separated)</label><input id="eTags" autocomplete="off"></div>
 <div class="fld"><label for="eDue">Due / remind at</label><input id="eDue" type="datetime-local"></div>
+<div class="fld"><label for="eRep">Repeat</label><select id="eRep"><option value="">Never</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></div>
+<div id="eRepBox" hidden style="display:grid;gap:10px">
+<div class="fld inl"><label for="eEvery" style="margin:0">Every</label><input id="eEvery" type="number" min="1" max="999" value="1" style="width:84px"><span id="eUnit">month</span></div>
+<div class="fld" id="eWdBox"><label>On these days</label><div class="wd" id="eWd"></div></div>
+<div class="fld inl"><label for="eEnd" style="margin:0">Ends</label><select id="eEnd"><option value="never">Never</option><option value="until">On date</option><option value="count">After</option></select><input id="eUntil" type="date" hidden><input id="eCount" type="number" min="1" max="9999" value="12" style="width:90px" hidden><span id="eTimes" hidden>times</span></div>
+<p class="meta" id="ePrev" style="margin:0"></p></div>
 <div class="row"><button type="button" class="btn d" id="eDel">Delete</button><span style="flex:1"></span><button type="button" class="btn" id="eCancel">Cancel</button><button class="btn p" id="eSave">Save</button></div>
 </form></dialog>
 <div class="toast" id="toast" hidden role="status"><span id="tmsg"></span><button id="tundo" hidden>Undo</button></div>
+<script src="recur.js"></script>
 <script>
 {
 const $=s=>document.querySelector(s), view=$('#view'), inp=$('#inp');
@@ -175,7 +186,7 @@ const LS='thoughtdrop.v1';
 let notes=new Map(), settings=clone(DEF), tomb={}, subs={}, col=null, dl=null, dict=null, listening=false;
 try{const o=JSON.parse(localStorage.getItem(LS)||'{}');(o.notes||[]).forEach(n=>n&&n.id&&notes.set(n.id,n));if(o.settings)settings={...settings,...o.settings};if(o.tomb)tomb=o.tomb;if(o.subs)subs=o.subs}catch(e){}
 const lsSave=()=>{try{localStorage.setItem(LS,JSON.stringify({notes:[...notes.values()],settings,tomb,subs}))}catch(e){}};
-function cleanNote(x){if(!x||typeof x.id!=='string'||!/^[\w-]{1,64}$/.test(x.id))return null;const n={id:x.id,kind:['note','list','task','reminder'].includes(x.kind)?x.kind:'note',text:String(x.text||''),tags:Array.isArray(x.tags)?x.tags.map(t=>String(t).slice(0,40)):[],created:+x.created||Date.now(),updated:+x.updated||+x.created||Date.now(),due:typeof x.due==='string'&&!isNaN(Date.parse(x.due))?x.due:null,done:!!x.done,pinned:!!x.pinned,archived:!!x.archived,reviewed:!!x.reviewed,notified:!!x.notified};if(x.kind==='list'){n.title=String(x.title||'List');n.items=Array.isArray(x.items)?x.items.map(i=>({t:String(i&&i.t||''),d:!!(i&&i.d)})):[]}return n}
+function cleanNote(x){if(!x||typeof x.id!=='string'||!/^[\w-]{1,64}$/.test(x.id))return null;const n={id:x.id,kind:['note','list','task','reminder'].includes(x.kind)?x.kind:'note',text:String(x.text||''),tags:Array.isArray(x.tags)?x.tags.map(t=>String(t).slice(0,40)):[],created:+x.created||Date.now(),updated:+x.updated||+x.created||Date.now(),due:typeof x.due==='string'&&!isNaN(Date.parse(x.due))?x.due:null,done:!!x.done,pinned:!!x.pinned,archived:!!x.archived,reviewed:!!x.reviewed,notified:!!x.notified};if(x.repeat&&Recur.valid(x.repeat)){const r=x.repeat;n.repeat={freq:r.freq,every:Math.max(1,Math.min(999,+r.every||1)),start:new Date(r.start).toISOString()};if(Array.isArray(r.days))n.repeat.days=r.days.map(Number).filter(d=>d>=0&&d<7);if(+r.day>=1&&+r.day<=31)n.repeat.day=+r.day;if(/^\d{4}-\d{2}-\d{2}$/.test(r.until))n.repeat.until=r.until;if(+r.count>0)n.repeat.count=Math.min(9999,+r.count)}if(x.kind==='list'){n.title=String(x.title||'List');n.items=Array.isArray(x.items)?x.items.map(i=>({t:String(i&&i.t||''),d:!!(i&&i.d)})):[]}return n}
 
 /* ---------- GitHub Gist sync ---------- */
 const GK='thoughtdrop.gist',FN='thoughtdrop.json';let gist={token:'',id:'',last:0};
@@ -202,6 +213,7 @@ async function gsync(){
   try{
     if(!gist.id){gist.id=await findGist();gSave()}
     let remote=null;if(gist.id){try{remote=await readRemote()}catch(e){if(e.status===404){gist.id='';gSave()}else throw e}}
+    const TZ=(Intl.DateTimeFormat().resolvedOptions().timeZone)||'';if(TZ&&settings.tz!==TZ){settings.tz=TZ;settings.updated=Date.now()}
     const ch=merge(remote),local={app:'thoughtdrop',v:1,notes:[...notes.values()],tomb,settings,subs},body=JSON.stringify(local);
     if(!gist.id){const g=await gh('/gists',{method:'POST',body:JSON.stringify({description:'ThoughtDrop notes — synced by the app, do not delete',public:false,files:{[FN]:{content:body}}})});gist.id=g.id}
     else if(!remote||canon(remote)!==canon(local))await gh('/gists/'+gist.id,{method:'PATCH',body:JSON.stringify({files:{[FN]:{content:body}}})});
@@ -277,9 +289,10 @@ function parse(raw){
   const n={id:uid(),kind:'note',text,tags:[...tags],created:Date.now(),done:false,pinned:false,archived:false,reviewed:false,due:null};
   let m;
   if(m=text.match(/^remind(?:\s+me)?\b[\s,:]*(.*)$/is)){
-    const w=parseWhen(m[1]);n.kind='reminder';
-    let body=w?strip(m[1],w.hits):m[1];body=body.replace(/^(to|about|that)\s+/i,'').replace(/\s+(to|on|at)$/i,'').trim();
-    n.text=body||m[1];n.due=w?w.date.toISOString():null;tags.add('reminders');n.tags=[...tags];
+    const rp=Recur.parse(m[1]),b1=rp?strip(m[1],rp.hits):m[1],w=parseWhen(b1);n.kind='reminder';
+    let body=w?strip(b1,w.hits):b1;
+    if(rp){const r=rp.repeat;r.start=Recur.firstDue(r,w&&w.date).toISOString();n.repeat=r}body=body.replace(/^(to|about|that)\s+/i,'').replace(/\s+(to|on|at)$/i,'').trim();
+    n.text=body||m[1];n.due=n.repeat?n.repeat.start:w?w.date.toISOString():null;tags.add('reminders');n.tags=[...tags];
   }else if((m=text.match(/^([\p{L} ]{1,24}):\s*([\s\S]+)$/u),m&&/,|\n/.test(m[2]))||/^list\b/i.test(text)){
     const hm=m&&/,|\n/.test(m[2]),head=hm?m[1]:'List',rest=hm?m[2]:text.replace(/^list\b[:\s-]*/i,'');
     n.kind='list';n.title=head.trim().replace(/^\w/,c=>c.toUpperCase());
@@ -288,7 +301,7 @@ function parse(raw){
     const ls=text.split('\n');n.kind='list';n.title=/^\s*[-*•]/.test(ls[0])?'List':ls.shift().trim();
     n.items=ls.map(x=>x.replace(/^\s*[-*•]\s*/,'').trim()).filter(Boolean).map(t=>({t,d:false}));n.text='';
   }else if(m=text.match(/^(todo|to-do|task|do)\b[:\s-]+([\s\S]+)$/i)){
-    n.kind='task';n.text=m[2].trim();const w=parseWhen(n.text);if(w&&/\b(by|due|on|at)\b/i.test(n.text))n.due=w.date.toISOString();
+    n.kind='task';n.text=m[2].trim();const rp=Recur.parse(n.text);if(rp){const b=strip(n.text,rp.hits),w=parseWhen(b);n.text=w?strip(b,w.hits):b;n.repeat=rp.repeat;n.repeat.start=Recur.firstDue(n.repeat,w&&w.date).toISOString();n.due=n.repeat.start}else{const w=parseWhen(n.text);if(w&&/\b(by|due|on|at)\b/i.test(n.text))n.due=w.date.toISOString()}
   }
   return n;
 }
@@ -309,9 +322,10 @@ function card(n){
   const can=n.kind==='task'||n.kind==='reminder';
   return `<article class="card ${n.pinned?'pin':''} ${n.done?'isdone':''}" data-id="${esc(n.id)}">
 <header><span class="kind">${I(KI[n.kind]||'note')}${KL[n.kind]||'Note'}</span>${n.pinned?`<span class="pinmark">${I('pin')}</span>`:''}<time>${fmtAgo(n.created)}</time></header>${body}
-<footer>${due?`<span class="due ${overdue(n)?'over':''}">${I('bell')}${esc(fmtDue(due))}</span>`:''}${(n.tags||[]).map(t=>`<button class="tag" data-tag="${esc(t)}">#${esc(t)}</button>`).join('')}
-<span class="acts">${can?`<button class="ib ${n.done?'on':''}" data-a="done" aria-label="${n.done?'Mark not done':'Mark done'}">${I('check')}</button>`:''}<button class="ib ${n.pinned?'on':''}" data-a="pin" aria-label="${n.pinned?'Unpin':'Pin'}">${I('pin')}</button><button class="ib" data-a="arch" aria-label="${n.archived?'Unarchive':'Archive'}">${I('box')}</button><button class="ib" data-a="edit" aria-label="Edit">${I('edit')}</button></span></footer></article>`;
+<footer>${due?`<span class="due ${overdue(n)?'over':''}">${I('bell')}${n.repeat?'Next: ':''}${esc(fmtDue(due))}</span>`:''}${n.repeat?`<span class="rep">${I('rep')}${esc(Recur.describe(n.repeat))}</span>`:''}${(n.tags||[]).map(t=>`<button class="tag" data-tag="${esc(t)}">#${esc(t)}</button>`).join('')}
+<span class="acts">${can?`<button class="ib ${n.done?'on':''}" data-a="done" aria-label="${n.repeat&&!n.done?'Done for this time':n.done?'Mark not done':'Mark done'}">${I('check')}</button>`:''}<button class="ib ${n.pinned?'on':''}" data-a="pin" aria-label="${n.pinned?'Unpin':'Pin'}">${I('pin')}</button><button class="ib" data-a="arch" aria-label="${n.archived?'Unarchive':'Archive'}">${I('box')}</button><button class="ib" data-a="edit" aria-label="Edit">${I('edit')}</button></span></footer></article>`;
 }
+function complete(n){if(n.repeat&&!n.done&&n.due){if(Recur.advance(n,Date.now()))return 'Next: '+fmtDue(new Date(n.due));n.done=true;return 'Series finished'}n.done=!n.done;return n.done?'Marked done':'Reopened'}
 const sorted=arr=>arr.sort((a,b)=>(b.pinned-a.pinned)||(b.created-a.created));
 
 /* ---------- views ---------- */
@@ -349,10 +363,12 @@ function vBoard(){
 function vCal(){
   const c=st.cal,y=c.getFullYear(),mo=c.getMonth(),start=new Date(y,mo,1);start.setDate(1-start.getDay());
   const all=[...notes.values()].filter(n=>!n.archived),today=new Date();let cells='';
+  const gEnd=new Date(start);gEnd.setDate(gEnd.getDate()+42);const occ={},key=d=>d.toDateString();
+  all.forEach(n=>{if(n.repeat&&!n.done&&n.due){Recur.list(n.repeat,new Date(Math.max(+start,Date.parse(n.due))),gEnd).forEach(d=>{(occ[key(d)]=occ[key(d)]||new Set()).add(n.id)})}else if(n.due){(occ[key(new Date(n.due))]=occ[key(new Date(n.due))]||new Set()).add(n.id)}});
   for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);
-    const made=all.filter(n=>sameDay(new Date(n.created),d)).length,due=all.filter(n=>n.due&&sameDay(new Date(n.due),d)).length;
+    const made=all.filter(n=>sameDay(new Date(n.created),d)).length,due=occ[key(d)]?occ[key(d)].size:0;
     cells+=`<button class="day ${d.getMonth()!==mo?'out':''} ${sameDay(d,today)?'today':''} ${sameDay(d,st.sel)?'sel':''}" data-day="${+d}" aria-label="${d.toDateString()}"><span>${d.getDate()}</span><span class="dots">${'<i></i>'.repeat(Math.min(made,4))}${'<i class="d"></i>'.repeat(Math.min(due,4))}</span></button>`}
-  const s=st.sel,list=sorted(all.filter(n=>sameDay(new Date(n.created),s)||(n.due&&sameDay(new Date(n.due),s))));
+  const s=st.sel,list=sorted(all.filter(n=>sameDay(new Date(n.created),s)||(occ[key(s)]&&occ[key(s)].has(n.id))));
   view.className='wrap feedwrap';
   view.innerHTML=`<div class="calhead"><h2>${c.toLocaleDateString([], {month:'long',year:'numeric'})}</h2><button class="ib" data-cal="-1" aria-label="Previous month">${I('l')}</button><button class="btn" data-cal="0">Today</button><button class="ib" data-cal="1" aria-label="Next month">${I('r')}</button></div>
 <div class="grid">${['S','M','T','W','T','F','S'].map(d=>`<div class="dow">${d}</div>`).join('')}${cells}</div>
@@ -375,8 +391,8 @@ function vSwipe(){
   c.onpointerup=c.onpointercancel=()=>{if(x0===null)return;x0=null;if(dx>100)swipe('keep');else if(dx<-100)swipe('arch');else{c.style.transform='';L.style.opacity=R.style.opacity=0}dx=0};
 }
 function swipe(a){const id=deckIds[0];if(!id)return;const n=clone(notes.get(id)),prev=clone(n);
-  if(a==='keep')n.reviewed=true;if(a==='arch')n.archived=true;if(a==='done')n.done=true;
-  put(n);toast(a==='keep'?'Kept':a==='arch'?'Archived':'Done',()=>put(prev))}
+  let msg=a==='keep'?'Kept':a==='arch'?'Archived':'';if(a==='keep')n.reviewed=true;if(a==='arch')n.archived=true;if(a==='done')msg=complete(n);
+  put(n);toast(msg,()=>put(prev))}
 function vPrefs(){
   const accents=['#ff5a36','#2f6bff','#0a9f7f','#e0218a','#f2a900'];
   const csync=$('#sync').lastChild.textContent;
@@ -384,6 +400,9 @@ function vPrefs(){
   view.innerHTML=`<section class="sec"><h2>How to text it</h2><p>Write naturally. These patterns sort themselves:</p><div class="cheat">
 <div><code>remind me friday at 3pm to pick up the uniform</code> → reminder with a due time</div>
 <div><code>remind me in 20 minutes to flip the brisket</code> → timed reminder</div>
+<div><code>remind me on the 25th of each month for the next 3 years to pay the truck note</code> → monthly, ends in 3 years</div>
+<div><code>remind me every monday and thursday at 6am to run</code> → weekly on two days</div>
+<div><code>remind me every year on 3/14 to renew the trailer tags</code> · <code>every 2 weeks</code> · <code>every weekday at 7</code> · <code>daily until 12/31</code> · <code>10 times</code></div>
 <div><code>groceries: eggs, milk, bread</code> → checklist titled Groceries</div>
 <div><code>todo change oil on the truck</code> → task with a check box</div>
 <div><code>#ranch fence line needs a new corner post</code> → tagged note (and a board column)</div>
@@ -456,13 +475,31 @@ function openEdit(id){const n=notes.get(id);if(!n)return;editing=id;$('#eKind').
   $('#eHint').textContent=n.kind==='list'?'(first line = title, one item per line, “x ” = done)':'';
   $('#eTags').value=(n.tags||[]).join(' ');
   const d=n.due?new Date(n.due):null;$('#eDue').value=d?new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,16):'';
+  const r=n.repeat||{};$('#eRep').value=r.freq||'';$('#eEvery').value=r.every||1;
+  $('#eWd').innerHTML=Recur.DAYS.map((x,i)=>`<button type="button" data-wd="${i}" class="${(r.days||(d&&r.freq==='weekly'?[d.getDay()]:[])).includes(i)?'on':''}" aria-label="${x}">${x[0]}</button>`).join('');
+  $('#eEnd').value=r.until?'until':r.count?'count':'never';$('#eUntil').value=r.until||'';$('#eCount').value=r.count||12;repUI();
   try{dlg.showModal()}catch(e){dlg.setAttribute('open','')}}
+function readRep(){const f=$('#eRep').value;if(!f)return null;const r={freq:f,every:Math.max(1,Math.min(999,+$('#eEvery').value||1))};
+  if(f==='weekly'){const ds=[...document.querySelectorAll('#eWd .on')].map(b=>+b.dataset.wd);if(ds.length)r.days=ds}
+  const dv=$('#eDue').value;if(f==='monthly'&&dv)r.day=new Date(dv).getDate();
+  const e=$('#eEnd').value;if(e==='until'&&$('#eUntil').value)r.until=$('#eUntil').value;if(e==='count')r.count=Math.max(1,Math.min(9999,+$('#eCount').value||1));return r}
+function repUI(){const f=$('#eRep').value,box=$('#eRepBox');box.hidden=!f;box.style.display=f?'grid':'none';if(!f)return;
+  const ev=+$('#eEvery').value||1;$('#eUnit').textContent={daily:'day',weekly:'week',monthly:'month',yearly:'year'}[f]+(ev>1?'s':'');
+  $('#eWdBox').hidden=f!=='weekly';const e=$('#eEnd').value;$('#eUntil').hidden=e!=='until';$('#eCount').hidden=$('#eTimes').hidden=e!=='count';
+  const dv=$('#eDue').value,r=readRep();if(!dv){$('#ePrev').textContent='Set the date and time of the first reminder above.';return}
+  r.start=new Date(dv).toISOString();const nx=Recur.list(r,new Date(),new Date(Date.now()+50*365*864e5),4);
+  const all=Recur.list(r,new Date(0),new Date(Date.now()+200*365*864e5),100000).length;
+  $('#ePrev').textContent=Recur.describe(r)+'. Next: '+(nx.length?nx.map(x=>fmtDue(x)).join(' · '):'none — the series has ended')+(r.until||r.count?` (${all} in all)`:'');}
+['eRep','eEvery','eEnd','eUntil','eCount','eDue'].forEach(id=>{$('#'+id).addEventListener('input',repUI);$('#'+id).addEventListener('change',repUI)});
 $('#eKind').onchange=()=>{$('#eHint').textContent=$('#eKind').value==='list'?'(first line = title, one item per line, “x ” = done)':''};
 $('#ef').onsubmit=e=>{e.preventDefault();const o=notes.get(editing);if(!o)return dlg.close();const n=clone(o),k=$('#eKind').value,txt=$('#eText').value.trim();
   n.kind=k;if(k==='list'){const ls=txt.split('\n').map(s=>s.trim()).filter(Boolean);n.title=(ls.shift()||'List');n.items=ls.map(l=>({d:/^x\s/i.test(l),t:l.replace(/^(x|-|\*|•)\s+/i,'')}));n.text=''}
   else{n.text=txt||(o.kind==='list'?[o.title,...(o.items||[]).map(i=>i.t)].join('\n'):'');delete n.items;delete n.title}
   n.tags=[...new Set($('#eTags').value.split(/[\s,]+/).map(t=>t.replace(/^#/,'').toLowerCase()).filter(Boolean))];
   const dv=$('#eDue').value;n.due=dv?new Date(dv).toISOString():null;if(n.due!==o.due)n.notified=false;
+  const r=readRep();if(r){if(!n.due){toast('Pick a date and time for the first reminder');return}r.start=n.due;n.repeat=r;if(n.kind!=='task')n.kind='reminder';delete n.items;delete n.title;n.text=n.text||'Reminder';
+    const f=Recur.list(r,new Date(n.due),new Date(Date.parse(n.due)+200*365*864e5),1)[0];if(f)n.due=f.toISOString();else n.done=true;
+    if(!n.done&&new Date(n.due)<new Date()&&!Recur.advance(n,Date.now()))n.done=true}else delete n.repeat;
   put(n,'Saved');dlg.close()};
 $('#eCancel').onclick=()=>dlg.close();
 $('#eDel').onclick=()=>{const o=clone(notes.get(editing));dlg.close();if(!o)return;del(o.id);toast('Deleted',()=>put(o))};
@@ -470,6 +507,7 @@ $('#eDel').onclick=()=>{const o=clone(notes.get(editing));dlg.close();if(!o)retu
 /* ---------- clicks ---------- */
 document.addEventListener('click',e=>{
   const t=e.target;let b;
+  if(b=t.closest('[data-wd]')){b.classList.toggle('on');repUI();return}
   if(b=t.closest('[data-ex]')){inp.value=b.dataset.ex;grow();inp.focus();return}
   if(b=t.closest('[data-f]')){st.f=b.dataset.f;render();return}
   if(b=t.closest('[data-tag]')){const tg=b.dataset.tag;st.tag=st.tag===tg?'':tg;if(route()!=='feed')location.hash='feed';else render();return}
@@ -483,7 +521,7 @@ document.addEventListener('click',e=>{
   if(o){const n=clone(o),prev=clone(o);
     if(a==='edit')return openEdit(id);
     if(a==='item'){const it=n.items[+b.dataset.i];if(it){it.d=!it.d;put(n)}return}
-    if(a==='done'){n.done=!n.done;put(n);toast(n.done?'Marked done':'Reopened',()=>put(prev));return}
+    if(a==='done'){const msg=complete(n);put(n);toast(msg,()=>put(prev));return}
     if(a==='pin'){n.pinned=!n.pinned;put(n);return}
     if(a==='arch'){n.archived=!n.archived;put(n);toast(n.archived?'Archived':'Restored',()=>put(prev));return}
   }
@@ -512,8 +550,8 @@ addEventListener('hashchange',render);
 
 /* ---------- due checks ---------- */
 const fired=new Set();
-const dueTick=()=>{let any=false;notes.forEach(n=>{if(overdue(n)&&!fired.has(n.id)){fired.add(n.id);any=true;if(!n.notified)localAlert(n).then(ok=>{if(ok){const c=clone(notes.get(n.id)||n);c.notified=true;c.updated=Date.now();notes.set(c.id,c);lsSave();push(c.id);queueSync()}})}});if(any&&!dlg.open&&document.activeElement!==$('#q'))render()};setInterval(dueTick,20000);
-notes.forEach(n=>{if(overdue(n)&&n.notified)fired.add(n.id)});
+const dueTick=()=>{let any=false;notes.forEach(n=>{const k=n.id+'@'+n.due;if(overdue(n)&&!fired.has(k)){fired.add(k);any=true;if(!n.notified)localAlert(n).then(ok=>{if(ok){const c=clone(notes.get(n.id)||n);if(!(c.repeat&&Recur.advance(c,Date.now())))c.notified=true;c.updated=Date.now();notes.set(c.id,c);lsSave();push(c.id);queueSync();render()}})}});if(any&&!dlg.open&&document.activeElement!==$('#q'))render()};setInterval(dueTick,20000);
+notes.forEach(n=>{if(overdue(n)&&n.notified)fired.add(n.id+'@'+n.due)});
 
 applyAccent();render();initCloud();gsync();setInterval(()=>{if(!document.hidden)gsync()},60000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)gsync()});
 if(location.hostname.endsWith("github.io")&&"serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
