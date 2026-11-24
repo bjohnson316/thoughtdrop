@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ThoughtDrop</title>
+<link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon-180.png"><meta name="theme-color" content="#ff5a36"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="ThoughtDrop">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* VOICE: quick, private, like texting yourself at 2am
+   IDEA: a message thread with your own brain; every text becomes a sorted card
+   PICTURE: the live feed and the send bubble are the picture
+   COLOUR+TYPE: white or ink ground, one hot "sent" accent, Figtree throughout
+   LAYOUT: app bar + view tabs, content column, composer pinned to the bottom */
+:root{color-scheme:light dark;--bg:light-dark(#f6f7f9,#0f1014);--panel:light-dark(#fff,#191b21);--ink:light-dark(#15161b,#eceef3);--mute:light-dark(#646977,#9ba0ad);--line:light-dark(#e3e5ea,#2a2d36);--chip:light-dark(#eef0f4,#24272f);--acc:#ff5a36;--warn:light-dark(#c62828,#ff7b72);--ok:light-dark(#17804a,#4ad08a)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Figtree,system-ui,sans-serif;overflow-x:clip;display:flex;flex-direction:column}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+svg.i{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.top{display:flex;align-items:center;gap:12px;padding:12px max(4vw,14px) 0;max-width:1100px;width:100%;margin:0 auto}
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:22px;letter-spacing:-.02em}
+.logo b{width:34px;height:34px;border-radius:12px 12px 12px 4px;background:var(--acc);display:grid;place-items:center;color:#fff}
+.sync{margin-left:auto;font-size:13px;color:var(--mute);display:flex;align-items:center;gap:6px;white-space:nowrap}
+.sync i{width:8px;height:8px;border-radius:50%;background:var(--mute)}.sync.ok i{background:var(--ok)}.sync.bad i{background:var(--warn)}
+nav.tabs{display:flex;gap:4px;overflow-x:auto;padding:10px max(4vw,14px);max-width:1100px;width:100%;margin:0 auto;scrollbar-width:none}
+nav.tabs a{flex:none;text-decoration:none;color:var(--mute);font-weight:600;padding:9px 14px;border-radius:999px;min-height:40px;display:flex;align-items:center}
+nav.tabs a.on{background:var(--ink);color:var(--bg)}
+main{flex:1;overflow-y:auto;width:100%}
+.wrap{max-width:1100px;margin:0 auto;padding:4px max(4vw,14px) 24px}
+.feedwrap{max-width:720px}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.search{flex:1 1 220px;display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:0 12px;min-height:44px}
+.search input{border:0;background:none;outline:0;flex:1;font-size:16px;min-height:42px}
+.seg{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;scrollbar-width:none}
+.seg button,.tag{flex:none;border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:6px 12px;font-size:14px;font-weight:600;min-height:36px;color:var(--mute)}
+.seg button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.tag{min-height:28px;padding:2px 10px;font-size:13px;background:var(--chip);border-color:transparent;color:var(--ink)}
+.tag.on{background:var(--acc);color:#fff}
+.banner{border:2px solid var(--warn);border-radius:18px;padding:10px 12px 4px;margin-bottom:14px}
+.banner h2{font-size:15px;margin:0 0 6px;color:var(--warn);display:flex;gap:6px;align-items:center}
+.list{display:grid;gap:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:18px 18px 18px 6px;padding:12px 14px 10px;box-shadow:0 1px 0 var(--line);animation:pop .25s ease-out}
+.card.pin{border-color:var(--acc)}
+.card.isdone{opacity:.62}
+.card header{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--mute)}
+.card header .kind{display:flex;align-items:center;gap:5px;font-weight:600}
+.card header .kind svg{width:15px;height:15px}
+.card header time{margin-left:auto}
+.pinmark{color:var(--acc);display:flex}.pinmark svg{width:15px;height:15px}
+.card h3{margin:6px 0 4px;font-size:17px}
+.txt{margin:6px 0 8px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:16.5px}
+.card a{color:var(--acc);overflow-wrap:anywhere}
+.struck{text-decoration:line-through;color:var(--mute)}
+.items{list-style:none;margin:4px 0;padding:0}
+.items li{display:flex;align-items:center;gap:8px;padding:2px 0;overflow-wrap:anywhere}
+.tick{width:26px;height:26px;border-radius:8px;border:2px solid var(--line);background:none;display:grid;place-items:center;flex:none;color:transparent;padding:0}
+.tick svg{width:16px;height:16px}.tick.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.meta{font-size:13px;color:var(--mute);margin:2px 0 6px}
+.card footer{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.due{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:700;color:var(--acc);white-space:nowrap}
+.due svg{width:14px;height:14px}.due.over{color:var(--warn)}
+.acts{margin-left:auto;display:flex;gap:2px}
+.ib{width:40px;height:40px;border:0;background:none;border-radius:12px;display:grid;place-items:center;color:var(--mute)}
+.ib:hover{background:var(--chip)}.ib.on{color:var(--acc)}
+.empty{text-align:center;color:var(--mute);padding:36px 10px}
+.empty h2{color:var(--ink);font-size:26px;line-height:1.1;margin:0 0 8px;text-wrap:balance}
+.ex{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px}
+.ex button{border:1px dashed var(--line);background:var(--panel);border-radius:14px 14px 14px 4px;padding:8px 12px;font-size:14px;text-align:left}
+/* composer */
+.comp{border-top:1px solid var(--line);background:var(--panel);padding:10px max(4vw,14px) 12px}
+.comp form{max-width:720px;margin:0 auto;display:flex;gap:8px;align-items:flex-end}
+.comp textarea{flex:1;resize:none;border:1px solid var(--line);background:var(--bg);border-radius:22px;padding:10px 16px;font-size:16px;line-height:1.4;max-height:160px;min-height:44px;outline:0}
+.comp textarea:focus{border-color:var(--acc)}
+.round{width:44px;height:44px;border-radius:50%;border:0;display:grid;place-items:center;flex:none}
+.send{background:var(--acc);color:#fff}
+.mic{background:var(--chip)}.mic.on{background:var(--warn);color:#fff}
+.hint{max-width:720px;margin:6px auto 0;font-size:13px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* board */
+.board{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:12px;align-items:flex-start}
+.col{flex:0 0 min(300px,82vw);scroll-snap-align:start;background:var(--chip);border-radius:18px;padding:10px}
+.col>h2{font-size:15px;margin:2px 4px 10px;display:flex;justify-content:space-between;align-items:center}
+.col>h2 button{border:0;background:none;color:var(--acc);font-weight:700;min-height:36px}
+.col .list{gap:8px}
+/* calendar */
+.calhead{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.calhead h2{font-size:26px;margin:0;flex:1;letter-spacing:-.01em}
+.grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.dow{font-size:12px;color:var(--mute);text-align:center;font-weight:700}
+.day{aspect-ratio:1/0.9;border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:5px;text-align:left;display:flex;flex-direction:column;justify-content:space-between;font-weight:600;font-size:14px}
+.day.out{opacity:.35}.day.today{border-color:var(--acc);color:var(--acc)}.day.sel{background:var(--ink);color:var(--bg)}
+.dots{display:flex;gap:3px;flex-wrap:wrap}.dots i{width:7px;height:7px;border-radius:50%;background:var(--acc)}.dots i.d{background:var(--warn)}
+.legend{font-size:13px;color:var(--mute);display:flex;gap:14px;margin:8px 0 16px}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--acc);margin-right:5px}.legend i.d{background:var(--warn)}
+/* swipe */
+.deck{max-width:460px;margin:0 auto;text-align:center}
+.deck .count{color:var(--mute);font-size:14px;margin:0 0 10px}
+.stage{position:relative;min-height:300px;display:grid;place-items:center}
+.stage .card{width:100%;text-align:left;touch-action:pan-y;user-select:none;font-size:18px;min-height:240px;display:flex;flex-direction:column;cursor:grab}
+.stage .card .txt{font-size:20px;flex:1}
+.stage .lab{position:absolute;top:14px;font-weight:800;font-size:18px;opacity:0;padding:4px 10px;border-radius:8px;border:3px solid}
+.lab.l{left:14px;color:var(--warn)}.lab.r{right:14px;color:var(--ok)}
+.swbtns{display:flex;justify-content:center;gap:12px;margin-top:16px}
+.swbtns button{min-height:48px;padding:0 18px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-weight:700;display:flex;gap:6px;align-items:center}
+.swbtns .k{background:var(--acc);border-color:var(--acc);color:#fff}
+/* prefs */
+.sec{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:14px 16px;margin-bottom:14px}
+.sec h2{font-size:18px;margin:0 0 4px}.sec p{margin:0 0 10px;color:var(--mute);font-size:15px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{min-height:44px;padding:0 16px;border-radius:12px;border:1px solid var(--line);background:var(--chip);font-weight:600}
+.btn.p{background:var(--acc);color:#fff;border-color:var(--acc)}
+.btn.d{color:var(--warn)}
+.sw{width:40px;height:40px;border-radius:50%;border:3px solid transparent}.sw.on{border-color:var(--ink)}
+.trig{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 44px;gap:6px;align-items:center;margin-bottom:6px}
+.trig input,.fld input,.fld textarea,.fld select{width:100%;min-height:44px;border:1px solid var(--line);border-radius:12px;background:var(--bg);padding:8px 12px;font-size:16px}
+.cheat{display:grid;gap:6px;font-size:15px}.cheat code{background:var(--chip);padding:2px 6px;border-radius:6px;overflow-wrap:anywhere}
+/* dialog + toast */
+dialog{border:0;border-radius:22px;padding:0;background:var(--panel);color:var(--ink);width:min(560px,94vw);box-shadow:0 20px 60px #0006}
+dialog::backdrop{background:#0008}
+dialog form{padding:18px;display:grid;gap:12px}
+dialog h2{margin:0;font-size:20px}
+.fld label{display:block;font-size:13px;font-weight:700;color:var(--mute);margin-bottom:4px}
+.fld textarea{min-height:130px;resize:vertical}
+.toast{position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:var(--ink);color:var(--bg);border-radius:999px;padding:10px 8px 10px 18px;display:flex;gap:12px;align-items:center;font-weight:600;font-size:15px;z-index:9;max-width:92vw}
+.toast button{background:none;border:0;color:var(--acc);font-weight:800;min-height:32px;padding:0 10px}
+.toast[hidden]{display:none}
+@keyframes pop{from{transform:translateY(6px);opacity:0}}
+@media(prefers-reduced-motion:reduce){.card{animation:none}}
+@media(max-width:600px){.logo{font-size:19px}.day{font-size:12px;padding:3px}.dots i{width:5px;height:5px}.calhead h2{font-size:21px}}
+</style></head><body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 4h6l-1 6 4 3H6l4-3zM12 13v7"/></symbol>
+<symbol id="i-box" viewBox="0 0 24 24"><path d="M3 5h18v4H3zM5 9v10h14V9M10 13h4"/></symbol>
+<symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/></symbol>
+<symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4zM10 20a2 2 0 004 0"/></symbol>
+<symbol id="i-note" viewBox="0 0 24 24"><path d="M5 4h14v16H5zM8 9h8M8 13h8M8 17h5"/></symbol>
+<symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+<symbol id="i-task" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8 12l3 3 5-6"/></symbol>
+<symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+<symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+<symbol id="i-l" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+<symbol id="i-r" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+</svg>
+<div class="top"><div class="logo"><b><svg class="i"><use href="#i-send"/></svg></b>ThoughtDrop</div><div class="sync" id="sync"><i></i><span>This device</span></div></div>
+<nav class="tabs" id="tabs"><a href="#feed">Feed</a><a href="#board">Board</a><a href="#calendar">Calendar</a><a href="#swipe">Swipe</a><a href="#prefs">Settings</a></nav>
+<main id="main"><div class="wrap" id="view"></div></main>
+<div class="comp"><form id="cf"><button type="button" class="round mic" id="mic" hidden aria-label="Dictate"><svg class="i"><use href="#i-mic"/></svg></button><textarea id="inp" rows="1" placeholder="Text yourself anything…" aria-label="New note"></textarea><button class="round send" aria-label="Send"><svg class="i"><use href="#i-send"/></svg></button></form>
+<div class="hint">Try <b>remind me tomorrow at 9am to call the shop</b> · <b>groceries: eggs, milk</b> · <b>todo</b> · <b>#tags</b></div></div>
+<dialog id="dlg"><form id="ef" method="dialog"><h2>Edit</h2>
+<div class="fld"><label for="eKind">Type</label><select id="eKind"><option value="note">Note</option><option value="task">Task</option><option value="list">List</option><option value="reminder">Reminder</option></select></div>
+<div class="fld"><label for="eText">Text <span id="eHint"></span></label><textarea id="eText"></textarea></div>
+<div class="fld"><label for="eTags">Tags (space separated)</label><input id="eTags" autocomplete="off"></div>
+<div class="fld"><label for="eDue">Due / remind at</label><input id="eDue" type="datetime-local"></div>
+<div class="row"><button type="button" class="btn d" id="eDel">Delete</button><span style="flex:1"></span><button type="button" class="btn" id="eCancel">Cancel</button><button class="btn p" id="eSave">Save</button></div>
+</form></dialog>
+<div class="toast" id="toast" hidden role="status"><span id="tmsg"></span><button id="tundo" hidden>Undo</button></div>
+<script>
+{
+const $=s=>document.querySelector(s), view=$('#view'), inp=$('#inp');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const linkify=s=>esc(s).replace(/https:\/\/[^\s<]+/g,u=>`<a href="${u}" target="_blank" rel="noopener">${u.length>48?u.slice(0,45)+'…':u}</a>`);
+const I=n=>`<svg class="i"><use href="#i-${n}"/></svg>`;
+const KI={note:'note',list:'list',task:'task',reminder:'bell'}, KL={note:'Note',list:'List',task:'Task',reminder:'Reminder'};
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const clone=o=>JSON.parse(JSON.stringify(o));
+const DEF={accent:'#ff5a36',triggers:{idea:'ideas',buy:'shopping',grocery:'shopping',groceries:'shopping',call:'calls',read:'reading',watch:'watchlist',work:'work'}};
+
+/* ---------- storage: this device, plus cloud sync when available ---------- */
+const LS='thoughtdrop.v1';
+let notes=new Map(), settings=clone(DEF), col=null, dl=null, dict=null, listening=false;
+try{const o=JSON.parse(localStorage.getItem(LS)||'{}');(o.notes||[]).forEach(n=>n&&n.id&&notes.set(n.id,n));if(o.settings)settings={...settings,...o.settings}}catch(e){}
+const lsSave=()=>{try{localStorage.setItem(LS,JSON.stringify({notes:[...notes.values()],settings}))}catch(e){}};
+const writing=new Map();
+async function push(id){
+  if(!col)return;let w=writing.get(id);if(w&&w.busy){w.again=true;return}
+  w={busy:true,again:false};writing.set(id,w);
+  try{do{w.again=false;const n=id==='_settings'?settings:notes.get(id),ref=col.doc(id);if(n)await ref.set(clone(n));else await ref.delete()}while(w.again)}
+  catch(e){toast(e&&e.code==='quota_exceeded'?'Cloud storage is full — delete old notes':'Couldn’t sync that change; it’s saved on this device')}
+  finally{w.busy=false}
+}
+function put(n,msg){n.updated=Date.now();notes.set(n.id,n);lsSave();push(n.id);render();if(msg)toast(msg)}
+function del(id){notes.delete(id);lsSave();push(id);render()}
+function saveSettings(){lsSave();push('_settings');applyAccent()}
+function setSync(s){const el=$('#sync');el.className='sync '+(s==='synced'?'ok':s==='offline'?'bad':'');el.lastChild.textContent={synced:'Synced',connecting:'Connecting…',offline:'Offline — saving here',local:'This device'}[s]}
+async function initCloud(){
+  if(!(window.claude&&claude.use))return;
+  try{const d=await claude.use('downloads');dl=d}catch(e){}
+  try{dict=await claude.use('dictation');if(dict)setupDictation()}catch(e){}
+  setSync('connecting');
+  try{
+    const [d,u]=await Promise.all([claude.use('db'),claude.use('user')]);
+    const id=u&&await u.id(); if(!d||!id)return setSync('local');
+    col=d.collection('data/users/'+id);
+    let first=true;const t=setTimeout(()=>setSync('offline'),10000);
+    col.onSnapshot(snap=>{
+      if(snap.metadata.fromCache&&snap.empty)return;
+      if(!snap.metadata.fromCache){clearTimeout(t);setSync('synced')}
+      if(first&&snap.empty){first=false;[...notes.keys()].forEach(push);push('_settings');return}
+      first=false;const m=new Map();
+      snap.docs.forEach(doc=>{const x=doc.data();if(!x)return;if(doc.id==='_settings')settings={...clone(DEF),...clone(x)};else if(x.id)m.set(doc.id,clone(x))});
+      notes=m;lsSave();applyAccent();render();
+    },()=>{clearTimeout(t);col=null;setSync('local')});
+  }catch(e){setSync('local')}
+}
+
+/* ---------- parsing: what you text becomes a card ---------- */
+const DAYS=['sun','mon','tue','wed','thu','fri','sat'];
+function parseWhen(s,now=new Date()){
+  const hits=[];let d=new Date(now),date=false,time=false,m;const low=s.toLowerCase();
+  const take=re=>{const r=low.match(re);if(r)hits.push(r[0]);return r};
+  if(m=take(/\bin (\d+|an?|one) (min(?:ute)?s?|hours?|hrs?|days?|weeks?)\b/)){
+    const k=/^\d+$/.test(m[1])?+m[1]:1,u=m[2][0];
+    if(u==='m')d=new Date(+now+k*6e4);else if(u==='h')d=new Date(+now+k*36e5);else d.setDate(d.getDate()+k*(u==='w'?7:1));
+    return{date:d,hits,exact:u==='m'||u==='h'};
+  }
+  if(take(/\btomorrow\b/)){d.setDate(d.getDate()+1);date=true}
+  else if(take(/\btoday\b/))date=true;
+  if(take(/\btonight\b/)){date=true;if(!/\d\s*(am|pm)|:\d/.test(low)){d.setHours(20,0,0,0);time=true}}
+  if(!date&&(m=take(/\b(?:on |next |this )?(sun|mon|tue|wed|thu|fri|sat)[a-z]*\b/))){const t=DAYS.indexOf(m[1]);let add=(t-d.getDay()+7)%7;if(add===0)add=7;d.setDate(d.getDate()+add);date=true}
+  if(!date&&(m=take(/\b(?:on )?(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/))){const y=m[3]?(+m[3]<100?2000+ +m[3]:+m[3]):d.getFullYear();d=new Date(y,+m[1]-1,+m[2],d.getHours(),d.getMinutes());if(!m[3]&&d<now&&d.toDateString()!==now.toDateString())d.setFullYear(y+1);date=true}
+  if(m=take(/\b(?:at |@ ?)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/)){let h=+m[1]%12;if(m[3]==='pm')h+=12;d.setHours(h,+(m[2]||0),0,0);time=true}
+  else if(m=take(/\bat (\d{1,2}):(\d{2})\b/)){d.setHours(+m[1],+m[2],0,0);time=true}
+  else if(m=take(/\b(?:at )?(noon|midnight)\b/)){d.setHours(m[1]==='noon'?12:0,0,0,0);time=true}
+  else if(m=take(/\b(?:in the |this )?(morning|afternoon|evening)\b/)){d.setHours({morning:9,afternoon:15,evening:18}[m[1]],0,0,0);time=true}
+  if(!date&&!time)return null;
+  if(!time)d.setHours(9,0,0,0);
+  if(time&&!date&&d<now)d.setDate(d.getDate()+1);
+  return{date:d,hits};
+}
+function strip(s,hits){let o=s;hits.forEach(h=>{const i=o.toLowerCase().indexOf(h);if(i>-1)o=o.slice(0,i)+o.slice(i+h.length)});return o.replace(/\s{2,}/g,' ').trim()}
+function parse(raw){
+  let text=raw.trim();const tags=new Set();
+  text=text.replace(/(^|\s)#([\p{L}\p{N}_-]+)/gu,(_,sp,t)=>{tags.add(t.toLowerCase());return sp}).trim();
+  const low=text.toLowerCase();
+  for(const [w,t] of Object.entries(settings.triggers||{}))if(w&&t&&new RegExp('\\b'+w.replace(/[^\w]/g,'')+'\\b','i').test(low))tags.add(t.toLowerCase());
+  const n={id:uid(),kind:'note',text,tags:[...tags],created:Date.now(),done:false,pinned:false,archived:false,reviewed:false,due:null};
+  let m;
+  if(m=text.match(/^remind(?:\s+me)?\b[\s,:]*(.*)$/is)){
+    const w=parseWhen(m[1]);n.kind='reminder';
+    let body=w?strip(m[1],w.hits):m[1];body=body.replace(/^(to|about|that)\s+/i,'').replace(/\s+(to|on|at)$/i,'').trim();
+    n.text=body||m[1];n.due=w?w.date.toISOString():null;tags.add('reminders');n.tags=[...tags];
+  }else if((m=text.match(/^([\p{L} ]{1,24}):\s*([\s\S]+)$/u),m&&/,|\n/.test(m[2]))||/^list\b/i.test(text)){
+    const hm=m&&/,|\n/.test(m[2]),head=hm?m[1]:'List',rest=hm?m[2]:text.replace(/^list\b[:\s-]*/i,'');
+    n.kind='list';n.title=head.trim().replace(/^\w/,c=>c.toUpperCase());
+    n.items=rest.split(/\n|,/).map(x=>x.replace(/^\s*[-*•]\s*/,'').trim()).filter(Boolean).map(t=>({t,d:false}));n.text='';
+  }else if(text.split('\n').filter(l=>/^\s*[-*•]\s+/.test(l)).length>=2){
+    const ls=text.split('\n');n.kind='list';n.title=/^\s*[-*•]/.test(ls[0])?'List':ls.shift().trim();
+    n.items=ls.map(x=>x.replace(/^\s*[-*•]\s*/,'').trim()).filter(Boolean).map(t=>({t,d:false}));n.text='';
+  }else if(m=text.match(/^(todo|to-do|task|do)\b[:\s-]+([\s\S]+)$/i)){
+    n.kind='task';n.text=m[2].trim();const w=parseWhen(n.text);if(w&&/\b(by|due|on|at)\b/i.test(n.text))n.due=w.date.toISOString();
+  }
+  return n;
+}
+
+/* ---------- formatting ---------- */
+const sameDay=(a,b)=>a.toDateString()===b.toDateString();
+function fmtAgo(t){const s=(Date.now()-t)/1e3;if(s<60)return'now';if(s<3600)return Math.floor(s/60)+'m';if(s<86400)return Math.floor(s/3600)+'h';const d=new Date(t);return d.toLocaleDateString([], {month:'short',day:'numeric'})}
+function fmtDue(d){const now=new Date(),tm=d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}),tmr=new Date();tmr.setDate(tmr.getDate()+1);
+  if(sameDay(d,now))return'Today '+tm;if(sameDay(d,tmr))return'Tomorrow '+tm;return d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'})+' '+tm}
+const isOpen=n=>!n.archived&&!n.done;
+const overdue=n=>n.due&&isOpen(n)&&new Date(n.due)<=new Date();
+
+function card(n){
+  const due=n.due?new Date(n.due):null;let body;
+  if(n.kind==='list'){const it=n.items||[],dn=it.filter(x=>x.d).length;
+    body=`<h3>${esc(n.title||'List')}</h3><ul class="items">${it.map((x,i)=>`<li><button class="tick ${x.d?'on':''}" data-a="item" data-i="${i}" aria-label="Toggle ${esc(x.t)}">${I('check')}</button><span class="${x.d?'struck':''}">${linkify(x.t)}</span></li>`).join('')}</ul><p class="meta">${dn} of ${it.length} done</p>`;
+  }else body=`<p class="txt ${n.done?'struck':''}">${linkify(n.text)}</p>`;
+  const can=n.kind==='task'||n.kind==='reminder';
+  return `<article class="card ${n.pinned?'pin':''} ${n.done?'isdone':''}" data-id="${esc(n.id)}">
+<header><span class="kind">${I(KI[n.kind]||'note')}${KL[n.kind]||'Note'}</span>${n.pinned?`<span class="pinmark">${I('pin')}</span>`:''}<time>${fmtAgo(n.created)}</time></header>${body}
+<footer>${due?`<span class="due ${overdue(n)?'over':''}">${I('bell')}${esc(fmtDue(due))}</span>`:''}${(n.tags||[]).map(t=>`<button class="tag" data-tag="${esc(t)}">#${esc(t)}</button>`).join('')}
+<span class="acts">${can?`<button class="ib ${n.done?'on':''}" data-a="done" aria-label="${n.done?'Mark not done':'Mark done'}">${I('check')}</button>`:''}<button class="ib ${n.pinned?'on':''}" data-a="pin" aria-label="${n.pinned?'Unpin':'Pin'}">${I('pin')}</button><button class="ib" data-a="arch" aria-label="${n.archived?'Unarchive':'Archive'}">${I('box')}</button><button class="ib" data-a="edit" aria-label="Edit">${I('edit')}</button></span></footer></article>`;
+}
+const sorted=arr=>arr.sort((a,b)=>(b.pinned-a.pinned)||(b.created-a.created));
+
+/* ---------- views ---------- */
+const st={q:'',tag:'',f:'all',cal:new Date(),sel:new Date()};
+const EX=['remind me tomorrow at 9am to call the tire shop','groceries: eggs, milk, coffee, tortillas','idea: build a shelf over the washer','todo renew truck registration by friday','https://example.com/article worth reading later #reading'];
+function vFeed(){
+  const all=[...notes.values()],tagCount={};all.filter(n=>!n.archived).forEach(n=>(n.tags||[]).forEach(t=>tagCount[t]=(tagCount[t]||0)+1));
+  const q=st.q.toLowerCase();
+  const vis=sorted(all.filter(n=>{
+    if(st.f==='archived'?!n.archived:n.archived)return false;
+    if(st.f==='done'&&!n.done)return false;
+    if(['note','list','task','reminder'].includes(st.f)&&n.kind!==st.f)return false;
+    if(st.tag&&!(n.tags||[]).includes(st.tag))return false;
+    if(q&&![n.text,n.title,...(n.items||[]).map(i=>i.t),...(n.tags||[])].join(' ').toLowerCase().includes(q))return false;
+    return true}));
+  const due=st.f==='all'&&!q&&!st.tag?all.filter(overdue):[];
+  const segs=[['all','All'],['note','Notes'],['list','Lists'],['task','Tasks'],['reminder','Reminders'],['done','Done'],['archived','Archived']];
+  view.className='wrap feedwrap';
+  view.innerHTML=`<div class="tools"><label class="search">${I('search')}<input id="q" type="search" placeholder="Search everything" value="${esc(st.q)}" aria-label="Search"></label></div>
+<div class="seg">${segs.map(([k,l])=>`<button data-f="${k}" class="${st.f===k?'on':''}">${l}</button>`).join('')}</div>
+${Object.keys(tagCount).length?`<div class="seg">${Object.entries(tagCount).sort((a,b)=>b[1]-a[1]).map(([t,c])=>`<button class="tag ${st.tag===t?'on':''}" data-tag="${esc(t)}">#${esc(t)} ${c}</button>`).join('')}</div>`:''}
+${due.length?`<section class="banner"><h2>${I('bell')}Due now · ${due.length}</h2><div class="list">${due.map(card).join('')}</div></section>`:''}
+${vis.length?`<div class="list">${vis.filter(n=>!due.includes(n)).map(card).join('')}</div>`:notes.size?`<div class="empty"><h2>Nothing matches</h2><p>Try another search, tag or filter.</p></div>`:
+`<div class="empty"><h2>Get it out of your head.</h2><p>Type anything below like you’re texting a friend. Tags, lists and reminders sort themselves. Tap an example to try it:</p><div class="ex">${EX.map(e=>`<button data-ex="${esc(e)}">${esc(e)}</button>`).join('')}</div></div>`}`;
+  const qi=$('#q');qi.oninput=()=>{st.q=qi.value;const p=qi.selectionStart;render();const n=$('#q');n.focus();n.setSelectionRange(p,p)};
+}
+function vBoard(){
+  const live=[...notes.values()].filter(n=>!n.archived),cols={};
+  live.forEach(n=>{const ts=n.tags&&n.tags.length?n.tags:['—'];ts.forEach(t=>(cols[t]=cols[t]||[]).push(n))});
+  const keys=Object.keys(cols).sort((a,b)=>a==='—'?1:b==='—'?-1:cols[b].length-cols[a].length);
+  view.className='wrap';
+  view.innerHTML=keys.length?`<div class="board">${keys.map(k=>`<section class="col"><h2><span>${k==='—'?'No tag':'#'+esc(k)} · ${cols[k].length}</span>${k==='—'?'':`<button data-add="${esc(k)}">+ Add</button>`}</h2><div class="list">${sorted(cols[k]).map(card).join('')}</div></section>`).join('')}</div>`
+  :`<div class="empty"><h2>Your board builds itself</h2><p>Every #tag becomes a column. Send a note with a tag to start one.</p></div>`;
+}
+function vCal(){
+  const c=st.cal,y=c.getFullYear(),mo=c.getMonth(),start=new Date(y,mo,1);start.setDate(1-start.getDay());
+  const all=[...notes.values()].filter(n=>!n.archived),today=new Date();let cells='';
+  for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);
+    const made=all.filter(n=>sameDay(new Date(n.created),d)).length,due=all.filter(n=>n.due&&sameDay(new Date(n.due),d)).length;
+    cells+=`<button class="day ${d.getMonth()!==mo?'out':''} ${sameDay(d,today)?'today':''} ${sameDay(d,st.sel)?'sel':''}" data-day="${+d}" aria-label="${d.toDateString()}"><span>${d.getDate()}</span><span class="dots">${'<i></i>'.repeat(Math.min(made,4))}${'<i class="d"></i>'.repeat(Math.min(due,4))}</span></button>`}
+  const s=st.sel,list=sorted(all.filter(n=>sameDay(new Date(n.created),s)||(n.due&&sameDay(new Date(n.due),s))));
+  view.className='wrap feedwrap';
+  view.innerHTML=`<div class="calhead"><h2>${c.toLocaleDateString([], {month:'long',year:'numeric'})}</h2><button class="ib" data-cal="-1" aria-label="Previous month">${I('l')}</button><button class="btn" data-cal="0">Today</button><button class="ib" data-cal="1" aria-label="Next month">${I('r')}</button></div>
+<div class="grid">${['S','M','T','W','T','F','S'].map(d=>`<div class="dow">${d}</div>`).join('')}${cells}</div>
+<div class="legend"><span><i></i>Captured</span><span><i class="d"></i>Due</span></div>
+<h3 style="margin:0 0 10px">${s.toLocaleDateString([], {weekday:'long',month:'long',day:'numeric'})}</h3>
+${list.length?`<div class="list">${list.map(card).join('')}</div>`:`<p class="meta">Nothing captured or due this day.</p>`}`;
+}
+let deckIds=[];
+function vSwipe(){
+  deckIds=[...notes.values()].filter(n=>isOpen(n)&&!n.reviewed).sort((a,b)=>a.created-b.created).map(n=>n.id);
+  const n=notes.get(deckIds[0]);view.className='wrap';
+  view.innerHTML=n?`<div class="deck"><p class="count">${deckIds.length} to triage · swipe right to keep, left to archive</p>
+<div class="stage" id="stage"><span class="lab l">ARCHIVE</span><span class="lab r">KEEP</span>${card(n)}</div>
+<div class="swbtns"><button data-sw="arch">${I('box')}Archive</button>${n.kind==='task'||n.kind==='reminder'?`<button data-sw="done">${I('check')}Done</button>`:''}<button class="k" data-sw="keep">${I('pin')}Keep</button></div></div>`
+  :`<div class="empty"><h2>Inbox zero.</h2><p>Everything has been triaged. New notes will show up here.</p>${[...notes.values()].some(n=>n.reviewed&&isOpen(n))?'<button class="btn" data-a="reshuffle">Review kept notes again</button>':''}</div>`;
+  const c=view.querySelector('.stage .card');if(!c)return;
+  let x0=null,dx=0;const L=view.querySelector('.lab.l'),R=view.querySelector('.lab.r');
+  c.onpointerdown=e=>{if(e.target.closest('button,a'))return;x0=e.clientX;c.setPointerCapture(e.pointerId)};
+  c.onpointermove=e=>{if(x0===null)return;dx=e.clientX-x0;c.style.transform=`translateX(${dx}px) rotate(${dx/20}deg)`;L.style.opacity=Math.max(0,-dx/100);R.style.opacity=Math.max(0,dx/100)};
+  c.onpointerup=c.onpointercancel=()=>{if(x0===null)return;x0=null;if(dx>100)swipe('keep');else if(dx<-100)swipe('arch');else{c.style.transform='';L.style.opacity=R.style.opacity=0}dx=0};
+}
+function swipe(a){const id=deckIds[0];if(!id)return;const n=clone(notes.get(id)),prev=clone(n);
+  if(a==='keep')n.reviewed=true;if(a==='arch')n.archived=true;if(a==='done')n.done=true;
+  put(n);toast(a==='keep'?'Kept':a==='arch'?'Archived':'Done',()=>put(prev))}
+function vPrefs(){
+  const accents=['#ff5a36','#2f6bff','#0a9f7f','#e0218a','#f2a900'];
+  const csync=$('#sync').lastChild.textContent;
+  view.className='wrap feedwrap';
+  view.innerHTML=`<section class="sec"><h2>How to text it</h2><p>Write naturally. These patterns sort themselves:</p><div class="cheat">
+<div><code>remind me friday at 3pm to pick up the uniform</code> → reminder with a due time</div>
+<div><code>remind me in 20 minutes to flip the brisket</code> → timed reminder</div>
+<div><code>groceries: eggs, milk, bread</code> → checklist titled Groceries</div>
+<div><code>todo change oil on the truck</code> → task with a check box</div>
+<div><code>#ranch fence line needs a new corner post</code> → tagged note (and a board column)</div>
+<div>Trigger words below add tags on their own, and any link becomes tappable.</div></div></section>
+<section class="sec"><h2>Trigger words</h2><p>When a message contains the word, it gets the tag.</p><div id="trigs">${Object.entries(settings.triggers||{}).map(([w,t])=>`<div class="trig"><input value="${esc(w)}" data-tw aria-label="Word"><input value="${esc(t)}" data-tt aria-label="Tag"><button class="ib" data-a="rmtrig" aria-label="Remove">${I('x')}</button></div>`).join('')}</div>
+<div class="row"><button class="btn" data-a="addtrig">+ Add word</button><button class="btn p" data-a="savetrig">Save words</button></div></section>
+<section class="sec"><h2>Color</h2><div class="row">${accents.map(a=>`<button class="sw ${settings.accent===a?'on':''}" style="background:${a}" data-acc="${a}" aria-label="Accent ${a}"></button>`).join('')}</div></section>
+<section class="sec"><h2>Sync &amp; reminders</h2><p>Status: <b>${esc(csync)}</b>. Inside Claude, notes sync to your account and are private to you. Opened elsewhere, they stay in this browser.</p><p>Due reminders appear at the top of the feed in red. Browser pop-up alerts work only where the browser allows them.</p><div class="row"><button class="btn" data-a="notif">Turn on pop-up alerts</button></div></section>
+<section class="sec"><h2>Export &amp; import</h2><p>${notes.size} notes stored.</p><div class="row"><button class="btn" data-a="csv">Export CSV</button><button class="btn" data-a="json">Export backup (JSON)</button><label class="btn" style="display:flex;align-items:center">Import backup<input type="file" accept=".json,application/json" id="imp" hidden></label></div></section>
+<section class="sec"><h2>Clean up</h2><div class="row"><button class="btn d" data-a="purge">Delete all archived (${[...notes.values()].filter(n=>n.archived).length})</button></div></section>`;
+  $('#imp').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const arr=JSON.parse(await f.text());let k=0;(Array.isArray(arr)?arr:arr.notes||[]).forEach(x=>{if(x&&typeof x.id==='string'&&/^[\w-]{1,64}$/.test(x.id)){const n={id:x.id,kind:['note','list','task','reminder'].includes(x.kind)?x.kind:'note',text:String(x.text||''),title:x.title?String(x.title):undefined,items:Array.isArray(x.items)?x.items.map(i=>({t:String(i.t||''),d:!!i.d})):undefined,tags:Array.isArray(x.tags)?x.tags.map(String):[],created:+x.created||Date.now(),due:x.due||null,done:!!x.done,pinned:!!x.pinned,archived:!!x.archived,reviewed:!!x.reviewed};if(!n.items)delete n.items;if(!n.title)delete n.title;notes.set(n.id,n);push(n.id);k++}});lsSave();render();toast(`Imported ${k} notes`)}catch(err){toast('That file isn’t a ThoughtDrop backup')}};
+}
+const VIEWS={feed:vFeed,board:vBoard,calendar:vCal,swipe:vSwipe,prefs:vPrefs};
+function route(){const h=location.hash.slice(1);return VIEWS[h]?h:'feed'}
+function render(){const r=route();document.querySelectorAll('#tabs a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+r));const sy=$('#main').scrollTop;VIEWS[r]();$('#main').scrollTop=sy}
+function applyAccent(){document.documentElement.style.setProperty('--acc',/^#[0-9a-f]{6}$/i.test(settings.accent)?settings.accent:DEF.accent)}
+
+/* ---------- toast ---------- */
+let tt=null;
+function toast(msg,undo){const t=$('#toast'),u=$('#tundo');$('#tmsg').textContent=msg;u.hidden=!undo;u.onclick=()=>{undo&&undo();t.hidden=true};t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,undo?5000:2200)}
+
+/* ---------- composer ---------- */
+const grow=()=>{inp.style.height='auto';inp.style.height=Math.min(inp.scrollHeight,160)+'px'};
+inp.oninput=grow;
+inp.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('#cf').requestSubmit()}};
+$('#cf').onsubmit=e=>{e.preventDefault();const v=inp.value.trim();if(!v)return;const n=parse(v);put(n,`Saved as ${KL[n.kind].toLowerCase()}${n.due?' · '+fmtDue(new Date(n.due)):''}${n.tags.length?' · #'+n.tags.join(' #'):''}`);inp.value='';grow();if(route()!=='feed'&&route()!=='board')location.hash='feed'};
+function setupDictation(){const mic=$('#mic'),PH=inp.placeholder;mic.hidden=false;
+  dict.onFinal(({text})=>{inp.value=(inp.value+' '+text).trim();grow()});
+  dict.onPartial(({text})=>{inp.placeholder=text||'Listening…'});
+  dict.onState(({state})=>{listening=state==='listening';mic.classList.toggle('on',listening);if(!listening)inp.placeholder=PH});
+  mic.onclick=()=>{if(listening){dict.stop().catch(()=>{});return}dict.start().catch(e=>{if(e&&e.code==='not_granted')mic.hidden=true})}}
+
+/* ---------- editor ---------- */
+let editing=null;const dlg=$('#dlg');
+function openEdit(id){const n=notes.get(id);if(!n)return;editing=id;$('#eKind').value=n.kind;
+  $('#eText').value=n.kind==='list'?[n.title||'List',...(n.items||[]).map(i=>(i.d?'x ':'- ')+i.t)].join('\n'):n.text;
+  $('#eHint').textContent=n.kind==='list'?'(first line = title, one item per line, “x ” = done)':'';
+  $('#eTags').value=(n.tags||[]).join(' ');
+  const d=n.due?new Date(n.due):null;$('#eDue').value=d?new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,16):'';
+  try{dlg.showModal()}catch(e){dlg.setAttribute('open','')}}
+$('#eKind').onchange=()=>{$('#eHint').textContent=$('#eKind').value==='list'?'(first line = title, one item per line, “x ” = done)':''};
+$('#ef').onsubmit=e=>{e.preventDefault();const o=notes.get(editing);if(!o)return dlg.close();const n=clone(o),k=$('#eKind').value,txt=$('#eText').value.trim();
+  n.kind=k;if(k==='list'){const ls=txt.split('\n').map(s=>s.trim()).filter(Boolean);n.title=(ls.shift()||'List');n.items=ls.map(l=>({d:/^x\s/i.test(l),t:l.replace(/^(x|-|\*|•)\s+/i,'')}));n.text=''}
+  else{n.text=txt||(o.kind==='list'?[o.title,...(o.items||[]).map(i=>i.t)].join('\n'):'');delete n.items;delete n.title}
+  n.tags=[...new Set($('#eTags').value.split(/[\s,]+/).map(t=>t.replace(/^#/,'').toLowerCase()).filter(Boolean))];
+  const dv=$('#eDue').value;n.due=dv?new Date(dv).toISOString():null;if(n.due!==o.due)n.notified=false;
+  put(n,'Saved');dlg.close()};
+$('#eCancel').onclick=()=>dlg.close();
+$('#eDel').onclick=()=>{const o=clone(notes.get(editing));dlg.close();if(!o)return;del(o.id);toast('Deleted',()=>put(o))};
+
+/* ---------- clicks ---------- */
+document.addEventListener('click',e=>{
+  const t=e.target;let b;
+  if(b=t.closest('[data-ex]')){inp.value=b.dataset.ex;grow();inp.focus();return}
+  if(b=t.closest('[data-f]')){st.f=b.dataset.f;render();return}
+  if(b=t.closest('[data-tag]')){const tg=b.dataset.tag;st.tag=st.tag===tg?'':tg;if(route()!=='feed')location.hash='feed';else render();return}
+  if(b=t.closest('[data-add]')){inp.value='#'+b.dataset.add+' ';grow();inp.focus();return}
+  if(b=t.closest('[data-cal]')){const v=+b.dataset.cal;if(v===0){st.cal=new Date();st.sel=new Date()}else st.cal=new Date(st.cal.getFullYear(),st.cal.getMonth()+v,1);render();return}
+  if(b=t.closest('[data-day]')){st.sel=new Date(+b.dataset.day);render();return}
+  if(b=t.closest('[data-sw]')){swipe(b.dataset.sw);return}
+  if(b=t.closest('[data-acc]')){settings.accent=b.dataset.acc;saveSettings();render();return}
+  if(!(b=t.closest('[data-a]')))return;
+  const a=b.dataset.a,cEl=b.closest('[data-id]'),id=cEl&&cEl.dataset.id,o=id&&notes.get(id);
+  if(o){const n=clone(o),prev=clone(o);
+    if(a==='edit')return openEdit(id);
+    if(a==='item'){const it=n.items[+b.dataset.i];if(it){it.d=!it.d;put(n)}return}
+    if(a==='done'){n.done=!n.done;put(n);toast(n.done?'Marked done':'Reopened',()=>put(prev));return}
+    if(a==='pin'){n.pinned=!n.pinned;put(n);return}
+    if(a==='arch'){n.archived=!n.archived;put(n);toast(n.archived?'Archived':'Restored',()=>put(prev));return}
+  }
+  if(a==='reshuffle'){[...notes.values()].filter(n=>n.reviewed&&isOpen(n)).forEach(n=>{const c=clone(n);c.reviewed=false;notes.set(c.id,c);push(c.id)});lsSave();render()}
+  if(a==='addtrig'){$('#trigs').insertAdjacentHTML('beforeend',`<div class="trig"><input data-tw placeholder="word" aria-label="Word"><input data-tt placeholder="tag" aria-label="Tag"><button class="ib" data-a="rmtrig" aria-label="Remove">${I('x')}</button></div>`)}
+  if(a==='rmtrig'){b.closest('.trig').remove()}
+  if(a==='savetrig'){const tr={};document.querySelectorAll('.trig').forEach(r=>{const w=r.querySelector('[data-tw]').value.trim().toLowerCase().replace(/[^\p{L}\p{N}_-]/gu,''),tg=r.querySelector('[data-tt]').value.trim().toLowerCase().replace(/^#/,'').replace(/[^\p{L}\p{N}_-]/gu,'');if(w&&tg)tr[w]=tg});settings.triggers=tr;saveSettings();render();toast('Trigger words saved')}
+  if(a==='csv'||a==='json'){const arr=[...notes.values()].sort((x,y)=>x.created-y.created);let data,fn;
+    if(a==='csv'){const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';data='created,type,text,tags,due,done,archived\n'+arr.map(n=>[new Date(n.created).toISOString(),n.kind,n.kind==='list'?[n.title,...(n.items||[]).map(i=>(i.d?'[x] ':'[ ] ')+i.t)].join('\n'):n.text,(n.tags||[]).join(' '),n.due||'',n.done,n.archived].map(q).join(',')).join('\n');fn='thoughtdrop.csv'}
+    else{data=JSON.stringify({notes:arr},null,1);fn='thoughtdrop-backup.json'}
+    if(dl)dl.save({filename:fn,data}).catch(()=>toast('Download cancelled'));
+    else if(navigator.clipboard)navigator.clipboard.writeText(data).then(()=>toast('Copied to clipboard — paste it into a file'),()=>toast('Couldn’t export here'));
+  }
+  if(a==='notif'){try{Notification.requestPermission().then(p=>toast(p==='granted'?'Pop-up alerts on':'This browser blocked pop-up alerts')).catch(()=>toast('Pop-up alerts aren’t available here'))}catch(err){toast('Pop-up alerts aren’t available here')}}
+  if(a==='purge'){const ar=[...notes.values()].filter(n=>n.archived).map(clone);if(!ar.length)return;ar.forEach(n=>{notes.delete(n.id);push(n.id)});lsSave();render();toast(`Deleted ${ar.length}`,()=>ar.forEach(n=>put(n)))}
+});
+addEventListener('hashchange',render);
+
+/* ---------- due checks ---------- */
+const fired=new Set();
+setInterval(()=>{let any=false;notes.forEach(n=>{if(overdue(n)&&!fired.has(n.id)){fired.add(n.id);any=true;try{if(window.Notification&&Notification.permission==='granted')new Notification('ThoughtDrop reminder',{body:n.text})}catch(e){}}});if(any&&!dlg.open&&document.activeElement!==$('#q'))render()},30000);
+notes.forEach(n=>{if(overdue(n))fired.add(n.id)});
+
+applyAccent();render();initCloud();
+if(location.hostname.endsWith("github.io")&&"serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+}
+</script></body></html>
