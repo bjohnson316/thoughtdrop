@@ -172,10 +172,10 @@ const DEF={accent:'#ff5a36',triggers:{idea:'ideas',buy:'shopping',grocery:'shopp
 
 /* ---------- storage: this device, plus cloud sync when available ---------- */
 const LS='thoughtdrop.v1';
-let notes=new Map(), settings=clone(DEF), tomb={}, col=null, dl=null, dict=null, listening=false;
-try{const o=JSON.parse(localStorage.getItem(LS)||'{}');(o.notes||[]).forEach(n=>n&&n.id&&notes.set(n.id,n));if(o.settings)settings={...settings,...o.settings};if(o.tomb)tomb=o.tomb}catch(e){}
-const lsSave=()=>{try{localStorage.setItem(LS,JSON.stringify({notes:[...notes.values()],settings,tomb}))}catch(e){}};
-function cleanNote(x){if(!x||typeof x.id!=='string'||!/^[\w-]{1,64}$/.test(x.id))return null;const n={id:x.id,kind:['note','list','task','reminder'].includes(x.kind)?x.kind:'note',text:String(x.text||''),tags:Array.isArray(x.tags)?x.tags.map(t=>String(t).slice(0,40)):[],created:+x.created||Date.now(),updated:+x.updated||+x.created||Date.now(),due:typeof x.due==='string'&&!isNaN(Date.parse(x.due))?x.due:null,done:!!x.done,pinned:!!x.pinned,archived:!!x.archived,reviewed:!!x.reviewed};if(x.kind==='list'){n.title=String(x.title||'List');n.items=Array.isArray(x.items)?x.items.map(i=>({t:String(i&&i.t||''),d:!!(i&&i.d)})):[]}return n}
+let notes=new Map(), settings=clone(DEF), tomb={}, subs={}, col=null, dl=null, dict=null, listening=false;
+try{const o=JSON.parse(localStorage.getItem(LS)||'{}');(o.notes||[]).forEach(n=>n&&n.id&&notes.set(n.id,n));if(o.settings)settings={...settings,...o.settings};if(o.tomb)tomb=o.tomb;if(o.subs)subs=o.subs}catch(e){}
+const lsSave=()=>{try{localStorage.setItem(LS,JSON.stringify({notes:[...notes.values()],settings,tomb,subs}))}catch(e){}};
+function cleanNote(x){if(!x||typeof x.id!=='string'||!/^[\w-]{1,64}$/.test(x.id))return null;const n={id:x.id,kind:['note','list','task','reminder'].includes(x.kind)?x.kind:'note',text:String(x.text||''),tags:Array.isArray(x.tags)?x.tags.map(t=>String(t).slice(0,40)):[],created:+x.created||Date.now(),updated:+x.updated||+x.created||Date.now(),due:typeof x.due==='string'&&!isNaN(Date.parse(x.due))?x.due:null,done:!!x.done,pinned:!!x.pinned,archived:!!x.archived,reviewed:!!x.reviewed,notified:!!x.notified};if(x.kind==='list'){n.title=String(x.title||'List');n.items=Array.isArray(x.items)?x.items.map(i=>({t:String(i&&i.t||''),d:!!(i&&i.d)})):[]}return n}
 
 /* ---------- GitHub Gist sync ---------- */
 const GK='thoughtdrop.gist',FN='thoughtdrop.json';let gist={token:'',id:'',last:0};
@@ -184,12 +184,14 @@ const gSave=()=>{try{localStorage.setItem(GK,JSON.stringify(gist))}catch(e){}};
 async function gh(path,opt={}){const r=await fetch('https://api.github.com'+path,{...opt,cache:'no-store',headers:{Authorization:'Bearer '+gist.token,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...(opt.body?{'Content-Type':'application/json'}:{})}});if(!r.ok){const e=new Error('HTTP '+r.status);e.status=r.status;throw e}return r.status===204?null:r.json()}
 async function findGist(){for(let p=1;p<=10;p++){const l=await gh('/gists?per_page=100&page='+p);const g=l.find(g=>g.files&&g.files[FN]);if(g)return g.id;if(l.length<100)break}return''}
 async function readRemote(){const g=await gh('/gists/'+gist.id);const f=g.files&&g.files[FN];if(!f)return null;let t=f.content;if(f.truncated){const r=await fetch(f.raw_url,{cache:'no-store'});t=await r.text()}try{return JSON.parse(t)}catch(e){return null}}
-const canon=o=>JSON.stringify({n:[...(o.notes||[])].sort((a,b)=>a.id<b.id?-1:1),t:Object.keys(o.tomb||{}).sort().map(k=>[k,o.tomb[k]]),s:o.settings||null});
+const canon=o=>JSON.stringify({n:[...(o.notes||[])].sort((a,b)=>a.id<b.id?-1:1),t:Object.keys(o.tomb||{}).sort().map(k=>[k,o.tomb[k]]),s:o.settings||null,p:Object.keys(o.subs||{}).sort().map(k=>[k,o.subs[k]&&o.subs[k].added])});
 function merge(r){
   if(!r)return false;let ch=false;
   for(const [id,ts] of Object.entries(r.tomb||{}))if(/^[\w-]{1,64}$/.test(id)&&+ts&&!(tomb[id]>=+ts))tomb[id]=+ts;
   (r.notes||[]).forEach(x=>{const n=cleanNote(x);if(!n||tomb[n.id]>=n.updated)return;const l=notes.get(n.id);if(!l||n.updated>(l.updated||0)){notes.set(n.id,n);ch=true}});
   for(const [id,n] of [...notes])if(tomb[id]>=(n.updated||n.created||0)){notes.delete(id);ch=true}
+  for(const [k,v] of Object.entries(r.subs||{}))if(/^[\w-]{1,40}$/.test(k)&&v&&v.sub&&typeof v.sub.endpoint==='string'&&v.sub.endpoint.startsWith('https://')&&!(tomb['sub-'+k]>=(+v.added||0))&&(!subs[k]||(+v.added||0)>(+subs[k].added||0))){subs[k]={sub:v.sub,added:+v.added||0,name:String(v.name||'').slice(0,40)};ch=true}
+  for(const k of Object.keys(subs))if(tomb['sub-'+k]>=(+subs[k].added||0)){delete subs[k];ch=true}
   const old=Date.now()-60*864e5;for(const k in tomb)if(tomb[k]<old)delete tomb[k];
   if(r.settings&&(+r.settings.updated||0)>(+settings.updated||0)){settings={...clone(DEF),...r.settings,triggers:typeof r.settings.triggers==='object'&&r.settings.triggers?r.settings.triggers:DEF.triggers};ch=true}
   return ch;
@@ -200,7 +202,7 @@ async function gsync(){
   try{
     if(!gist.id){gist.id=await findGist();gSave()}
     let remote=null;if(gist.id){try{remote=await readRemote()}catch(e){if(e.status===404){gist.id='';gSave()}else throw e}}
-    const ch=merge(remote),local={app:'thoughtdrop',v:1,notes:[...notes.values()],tomb,settings},body=JSON.stringify(local);
+    const ch=merge(remote),local={app:'thoughtdrop',v:1,notes:[...notes.values()],tomb,settings,subs},body=JSON.stringify(local);
     if(!gist.id){const g=await gh('/gists',{method:'POST',body:JSON.stringify({description:'ThoughtDrop notes — synced by the app, do not delete',public:false,files:{[FN]:{content:body}}})});gist.id=g.id}
     else if(!remote||canon(remote)!==canon(local))await gh('/gists/'+gist.id,{method:'PATCH',body:JSON.stringify({files:{[FN]:{content:body}}})});
     gist.last=Date.now();gSave();if(ch){lsSave();applyAccent()}setSync('gist');if(ch||route()==='prefs')softRender();
@@ -391,7 +393,12 @@ function vPrefs(){
 <section class="sec"><h2>Color</h2><div class="row">${accents.map(a=>`<button class="sw ${settings.accent===a?'on':''}" style="background:${a}" data-acc="${a}" aria-label="Accent ${a}"></button>`).join('')}</div></section>
 <section class="sec"><h2>Sync with GitHub Gist</h2>${gist.token?`<p>Status: <b>${esc(csync)}</b>${gist.last?' · last synced '+esc(new Date(gist.last).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})):''}. Notes live in a secret gist on your GitHub account and sync every time you make a change, open the app, or wait a minute.</p>${gist.id?`<p><a href="https://gist.github.com/${esc(gist.id)}" target="_blank" rel="noopener">Open the gist</a></p>`:''}<div class="row"><button class="btn p" data-a="gsync">Sync now</button><button class="btn d" data-a="gout">Disconnect this device</button></div>`
 :`<p>Keep every phone and computer in step. Make a GitHub token with only the <b>gist</b> box checked (<a href="https://github.com/settings/tokens/new?scopes=gist&description=ThoughtDrop" target="_blank" rel="noopener">create one here</a>, classic token), paste it below, and do the same on each device. The token stays on this device only.</p><div class="fld"><input id="gtok" type="password" placeholder="ghp_…" autocomplete="off" aria-label="GitHub token"></div><div class="row" style="margin-top:8px"><button class="btn p" data-a="gin">Connect</button></div>`}</section>
-<section class="sec"><h2>Reminders</h2><p>Due reminders appear at the top of the feed in red. Pop-up alerts work while the app is open, where the browser allows them.</p><div class="row"><button class="btn" data-a="notif">Turn on pop-up alerts</button></div></section>
+<section class="sec"><h2>Push notifications</h2><p>Get a buzz on this device when a reminder or task comes due, even with the app closed.</p>
+${newPriv?`<div class="sec" style="border-color:var(--acc)"><h2>Copy your private push key now</h2><p>It’s shown only once and never leaves this device. In GitHub open <b>bjohnson316/thoughtdrop → Settings → Secrets and variables → Actions → New repository secret</b>, name it <b>VAPID_PRIVATE_KEY</b>, and paste this:</p><div class="fld"><input readonly value="${esc(newPriv)}" aria-label="Private push key" id="privk"></div><div class="row" style="margin-top:8px"><button class="btn p" data-a="cpk">Copy key</button><button class="btn" data-a="donek">I saved it</button></div></div>`:''}
+${!vapidPub()?`<p><b>Step 1, one time only:</b> create the push key pair. Do this on one device; the others pick it up through Gist sync.</p><div class="row"><button class="btn p" data-a="mkkey">Create push key</button></div>`:''}
+${subs[DEV]?`<p><b>On for this device.</b> Devices getting pushes: ${Object.values(subs).map(v=>esc(v.name||'Device')).join(', ')}.</p><div class="row"><button class="btn" data-a="ptest">Send a test</button><button class="btn d" data-a="poff">Turn off here</button></div>`
+:`${isIOS&&!standalone?'<p>On iPhone: tap Share → <b>Add to Home Screen</b>, open ThoughtDrop from the new icon, then turn this on there.</p>':''}${gist.token?'':'<p>Connect Gist sync above first.</p>'}${vapidPub()?'<div class="row"><button class="btn p" data-a="pon">Turn on push notifications</button></div>':''}`}
+<p style="margin-top:10px">With the app open, alerts are on time. With it closed, GitHub checks every 5 minutes, so a push can land a few minutes late.</p></section>
 <section class="sec"><h2>Export &amp; import</h2><p>${notes.size} notes stored.</p><div class="row"><button class="btn" data-a="csv">Export CSV</button><button class="btn" data-a="json">Export backup (JSON)</button><label class="btn" style="display:flex;align-items:center">Import backup<input type="file" accept=".json,application/json" id="imp" hidden></label></div></section>
 <section class="sec"><h2>Clean up</h2><div class="row"><button class="btn d" data-a="purge">Delete all archived (${[...notes.values()].filter(n=>n.archived).length})</button></div></section>`;
   $('#imp').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const o=JSON.parse(await f.text());let k=0;(Array.isArray(o)?o:o.notes||[]).forEach(x=>{const n=cleanNote(x);if(n){n.updated=Date.now();delete tomb[n.id];notes.set(n.id,n);push(n.id);k++}});lsSave();queueSync();render();toast(`Imported ${k} notes`)}catch(err){toast('That file isn’t a ThoughtDrop backup')}};
@@ -400,6 +407,32 @@ const VIEWS={feed:vFeed,board:vBoard,calendar:vCal,swipe:vSwipe,prefs:vPrefs};
 function route(){const h=location.hash.slice(1);return VIEWS[h]?h:'feed'}
 function render(){const r=route();document.querySelectorAll('#tabs a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+r));const sy=$('#main').scrollTop;VIEWS[r]();$('#main').scrollTop=sy}
 function applyAccent(){document.documentElement.style.setProperty('--acc',/^#[0-9a-f]{6}$/i.test(settings.accent)?settings.accent:DEF.accent)}
+
+/* ---------- push notifications ---------- */
+const vapidPub=()=>settings.vapid&&typeof settings.vapid.pub==='string'?settings.vapid.pub:'';
+let DEV='';try{DEV=localStorage.getItem('thoughtdrop.dev')||'';if(!DEV){DEV='d'+uid();localStorage.setItem('thoughtdrop.dev',DEV)}}catch(e){DEV='d'+uid()}
+const pushCapable=()=>location.hostname.endsWith('github.io')&&'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
+const isIOS=/iP(hone|ad|od)/.test(navigator.userAgent),standalone=!!((window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone);
+const b64u=s=>{const p='='.repeat((4-s.length%4)%4),b=atob((s+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(b,c=>c.charCodeAt(0))};
+function devName(){const u=navigator.userAgent;return /iPhone/.test(u)?'iPhone':/iPad/.test(u)?'iPad':/Android/.test(u)?'Android':/Mac/.test(u)?'Mac':/Windows/.test(u)?'Windows PC':'Browser'}
+async function pushOn(){
+  if(!pushCapable())return toast(isIOS&&!standalone?'On iPhone, add ThoughtDrop to your Home Screen first, then open it from there':'Push isn’t supported in this browser');
+  if(!gist.token)return toast('Connect Gist sync first — it carries your reminders to the push sender');
+  if(!vapidPub())return toast('Create the push key first (step 1)');
+  try{
+    const perm=await Notification.requestPermission();if(perm!=='granted')return toast('Notifications were blocked — allow them in your browser settings');
+    const reg=await navigator.serviceWorker.ready;let sub=await reg.pushManager.getSubscription();
+    if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u(vapidPub())});
+    delete tomb['sub-'+DEV];subs[DEV]={sub:sub.toJSON(),added:Date.now(),name:devName()};lsSave();await gsync();render();toast('Push notifications on for this device');
+  }catch(e){toast('Couldn’t turn on push: '+(e&&e.message||'unknown error'))}
+}
+let newPriv='';
+async function makeKey(){try{const k=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign']);
+  const raw=new Uint8Array(await crypto.subtle.exportKey('raw',k.publicKey)),jwk=await crypto.subtle.exportKey('jwk',k.privateKey);
+  const pub=btoa(String.fromCharCode(...raw)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  newPriv=jwk.d;settings.vapid={pub};saveSettings();render();}catch(e){toast('This browser can’t create keys')}}
+async function pushOff(){try{const reg=await navigator.serviceWorker.ready,sub=await reg.pushManager.getSubscription();if(sub)await sub.unsubscribe()}catch(e){}delete subs[DEV];tomb['sub-'+DEV]=Date.now();lsSave();queueSync();render();toast('Push notifications off for this device')}
+async function localAlert(n){try{if(Notification.permission!=='granted')return false;const reg=navigator.serviceWorker&&await navigator.serviceWorker.getRegistration();const body=n.kind==='list'?n.title:n.text;if(reg)await reg.showNotification('ThoughtDrop',{body,tag:n.id,icon:'icon-192.png',badge:'icon-192.png',data:{url:'./#feed'}});else new Notification('ThoughtDrop',{body,tag:n.id});return true}catch(e){return false}}
 
 /* ---------- toast ---------- */
 let tt=null;
@@ -467,15 +500,20 @@ document.addEventListener('click',e=>{
     if(dl)dl.save({filename:fn,data}).catch(()=>toast('Download cancelled'));
     else if(navigator.clipboard)navigator.clipboard.writeText(data).then(()=>toast('Copied to clipboard — paste it into a file'),()=>toast('Couldn’t export here'));
   }
-  if(a==='notif'){try{Notification.requestPermission().then(p=>toast(p==='granted'?'Pop-up alerts on':'This browser blocked pop-up alerts')).catch(()=>toast('Pop-up alerts aren’t available here'))}catch(err){toast('Pop-up alerts aren’t available here')}}
+  if(a==='pon')pushOn();
+  if(a==='mkkey')makeKey();
+  if(a==='cpk'){const v=$('#privk').value;navigator.clipboard?navigator.clipboard.writeText(v).then(()=>toast('Copied'),()=>{$('#privk').select();toast('Select and copy it manually')}):$('#privk').select()}
+  if(a==='donek'){newPriv='';render()}
+  if(a==='poff')pushOff();
+  if(a==='ptest')localAlert({id:'test',kind:'note',text:'Test notification — you’re all set.'}).then(ok=>toast(ok?'Sent':'Notifications are blocked here'));
   if(a==='purge'){const ar=[...notes.values()].filter(n=>n.archived).map(clone);if(!ar.length)return;ar.forEach(n=>{notes.delete(n.id);tomb[n.id]=Date.now();push(n.id)});lsSave();queueSync();render();toast(`Deleted ${ar.length}`,()=>ar.forEach(n=>put(n)))}
 });
 addEventListener('hashchange',render);
 
 /* ---------- due checks ---------- */
 const fired=new Set();
-setInterval(()=>{let any=false;notes.forEach(n=>{if(overdue(n)&&!fired.has(n.id)){fired.add(n.id);any=true;try{if(window.Notification&&Notification.permission==='granted')new Notification('ThoughtDrop reminder',{body:n.text})}catch(e){}}});if(any&&!dlg.open&&document.activeElement!==$('#q'))render()},30000);
-notes.forEach(n=>{if(overdue(n))fired.add(n.id)});
+const dueTick=()=>{let any=false;notes.forEach(n=>{if(overdue(n)&&!fired.has(n.id)){fired.add(n.id);any=true;if(!n.notified)localAlert(n).then(ok=>{if(ok){const c=clone(notes.get(n.id)||n);c.notified=true;c.updated=Date.now();notes.set(c.id,c);lsSave();push(c.id);queueSync()}})}});if(any&&!dlg.open&&document.activeElement!==$('#q'))render()};setInterval(dueTick,20000);
+notes.forEach(n=>{if(overdue(n)&&n.notified)fired.add(n.id)});
 
 applyAccent();render();initCloud();gsync();setInterval(()=>{if(!document.hidden)gsync()},60000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)gsync()});
 if(location.hostname.endsWith("github.io")&&"serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
