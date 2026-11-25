@@ -273,6 +273,8 @@ function parseWhen(s,now=new Date()){
   if(!date&&(m=take(/\b(?:on )?(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/))){const y=m[3]?(+m[3]<100?2000+ +m[3]:+m[3]):d.getFullYear();d=new Date(y,+m[1]-1,+m[2],d.getHours(),d.getMinutes());if(!m[3]&&d<now&&d.toDateString()!==now.toDateString())d.setFullYear(y+1);date=true}
   if(m=take(/\b(?:at |@ ?)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/)){let h=+m[1]%12;if(m[3]==='pm')h+=12;d.setHours(h,+(m[2]||0),0,0);time=true}
   else if(m=take(/\bat (\d{1,2}):(\d{2})\b/)){d.setHours(+m[1],+m[2],0,0);time=true}
+  else if(m=take(/\b(?:at )?([01]\d|2[0-3])([0-5]\d)\s*(?:hrs|hours)\b|\bat ([01]\d|2[0-3])([0-5]\d)\b/)){d.setHours(+(m[1]||m[3]),+(m[2]||m[4]),0,0);time=true}
+  else if(m=take(/\bat (\d{1,2})\b(?![:\d\/])/)){let h=+m[1];if(h>=1&&h<=6)h+=12;d.setHours(h%24,0,0,0);time=true}
   else if(m=take(/\b(?:at )?(noon|midnight)\b/)){d.setHours(m[1]==='noon'?12:0,0,0,0);time=true}
   else if(m=take(/\b(?:in the |this )?(morning|afternoon|evening)\b/)){d.setHours({morning:9,afternoon:15,evening:18}[m[1]],0,0,0);time=true}
   if(!date&&!time)return null;
@@ -288,11 +290,13 @@ function parse(raw){
   for(const [w,t] of Object.entries(settings.triggers||{}))if(w&&t&&new RegExp('\\b'+w.replace(/[^\w]/g,'')+'\\b','i').test(low))tags.add(t.toLowerCase());
   const n={id:uid(),kind:'note',text,tags:[...tags],created:Date.now(),done:false,pinned:false,archived:false,reviewed:false,due:null};
   let m;
-  if(m=text.match(/^remind(?:\s+me)?\b[\s,:]*(.*)$/is)){
+  const RT=/^(?:(?:please|hey|ok|okay)[\s,]+)?(?:(?:add|set|create|make|new|put|schedule|set up|give me)\s+(?:(?:a|an|me a|me an|the|another)\s+)?)?(?:remind(?:er)?s?(?:\s+me)?|alert(?:\s+me)?|ping\s+me|notify\s+me|alarm)\b[\s,:;-]*([\s\S]*)$/i;
+  if(!(m=text.match(RT))&&/\b(remind me|reminder)\b/i.test(text)&&parseWhen(text))m=[text,text.replace(/\b(?:set |add )?(?:a )?(?:remind me|reminder)\b/i,' ')];
+  if(m){
     const rp=Recur.parse(m[1]),b1=rp?strip(m[1],rp.hits):m[1],w=parseWhen(b1);n.kind='reminder';
     let body=w?strip(b1,w.hits):b1;
-    if(rp){const r=rp.repeat;r.start=Recur.firstDue(r,w&&w.date).toISOString();n.repeat=r}body=body.replace(/^(to|about|that)\s+/i,'').replace(/\s+(to|on|at)$/i,'').trim();
-    n.text=body||m[1];n.due=n.repeat?n.repeat.start:w?w.date.toISOString():null;tags.add('reminders');n.tags=[...tags];
+    if(rp){const r=rp.repeat;r.start=Recur.firstDue(r,w&&w.date).toISOString();n.repeat=r}for(let i=0;i<3;i++)body=body.replace(/^[\s,:;-]*(to|about|that|for|of|on|at|is|me)\b\s*/i,'').replace(/\s+(to|on|at|for|by)$/i,'').trim();body=body.replace(/^\w/,c=>c.toUpperCase());
+    n.text=body||m[1].trim()||'Reminder';n.due=n.repeat?n.repeat.start:w?w.date.toISOString():null;tags.add('reminders');n.tags=[...tags];
   }else if((m=text.match(/^([\p{L} ]{1,24}):\s*([\s\S]+)$/u),m&&/,|\n/.test(m[2]))||/^list\b/i.test(text)){
     const hm=m&&/,|\n/.test(m[2]),head=hm?m[1]:'List',rest=hm?m[2]:text.replace(/^list\b[:\s-]*/i,'');
     n.kind='list';n.title=head.trim().replace(/^\w/,c=>c.toUpperCase());
@@ -309,8 +313,9 @@ function parse(raw){
 /* ---------- formatting ---------- */
 const sameDay=(a,b)=>a.toDateString()===b.toDateString();
 function fmtAgo(t){const s=(Date.now()-t)/1e3;if(s<60)return'now';if(s<3600)return Math.floor(s/60)+'m';if(s<86400)return Math.floor(s/3600)+'h';const d=new Date(t);return d.toLocaleDateString([], {month:'short',day:'numeric'})}
-function fmtDue(d){const now=new Date(),tm=d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}),tmr=new Date();tmr.setDate(tmr.getDate()+1);
-  if(sameDay(d,now))return'Today '+tm;if(sameDay(d,tmr))return'Tomorrow '+tm;return d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'})+' '+tm}
+function fmtStamp(t){const d=new Date(t),y=d.getFullYear()!==new Date().getFullYear();return d.toLocaleDateString([], {month:'short',day:'numeric',...(y?{year:'numeric'}:{})})+', '+d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}
+function fmtDue(d){const now=new Date(),tmr=new Date();tmr.setDate(tmr.getDate()+1);const tm=d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}),y=d.getFullYear()!==now.getFullYear();
+  const ds=d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric',...(y?{year:'numeric'}:{})});return (sameDay(d,now)?'Today, ':sameDay(d,tmr)?'Tomorrow, ':'')+ds+' · '+tm}
 const isOpen=n=>!n.archived&&!n.done;
 const overdue=n=>n.due&&isOpen(n)&&new Date(n.due)<=new Date();
 
@@ -321,7 +326,7 @@ function card(n){
   }else body=`<p class="txt ${n.done?'struck':''}">${linkify(n.text)}</p>`;
   const can=n.kind==='task'||n.kind==='reminder';
   return `<article class="card ${n.pinned?'pin':''} ${n.done?'isdone':''}" data-id="${esc(n.id)}">
-<header><span class="kind">${I(KI[n.kind]||'note')}${KL[n.kind]||'Note'}</span>${n.pinned?`<span class="pinmark">${I('pin')}</span>`:''}<time>${fmtAgo(n.created)}</time></header>${body}
+<header><span class="kind">${I(KI[n.kind]||'note')}${KL[n.kind]||'Note'}</span>${n.pinned?`<span class="pinmark">${I('pin')}</span>`:''}<time datetime="${new Date(n.created).toISOString()}">${esc(fmtStamp(n.created))}</time></header>${body}
 <footer>${due?`<span class="due ${overdue(n)?'over':''}">${I('bell')}${n.repeat?'Next: ':''}${esc(fmtDue(due))}</span>`:''}${n.repeat?`<span class="rep">${I('rep')}${esc(Recur.describe(n.repeat))}</span>`:''}${(n.tags||[]).map(t=>`<button class="tag" data-tag="${esc(t)}">#${esc(t)}</button>`).join('')}
 <span class="acts">${can?`<button class="ib ${n.done?'on':''}" data-a="done" aria-label="${n.repeat&&!n.done?'Done for this time':n.done?'Mark not done':'Mark done'}">${I('check')}</button>`:''}<button class="ib ${n.pinned?'on':''}" data-a="pin" aria-label="${n.pinned?'Unpin':'Pin'}">${I('pin')}</button><button class="ib" data-a="arch" aria-label="${n.archived?'Unarchive':'Archive'}">${I('box')}</button><button class="ib" data-a="edit" aria-label="Edit">${I('edit')}</button></span></footer></article>`;
 }
@@ -366,15 +371,15 @@ function vCal(){
   const gEnd=new Date(start);gEnd.setDate(gEnd.getDate()+42);const occ={},key=d=>d.toDateString();
   all.forEach(n=>{if(n.repeat&&!n.done&&n.due){Recur.list(n.repeat,new Date(Math.max(+start,Date.parse(n.due))),gEnd).forEach(d=>{(occ[key(d)]=occ[key(d)]||new Set()).add(n.id)})}else if(n.due){(occ[key(new Date(n.due))]=occ[key(new Date(n.due))]||new Set()).add(n.id)}});
   for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);
-    const made=all.filter(n=>sameDay(new Date(n.created),d)).length,due=occ[key(d)]?occ[key(d)].size:0;
-    cells+=`<button class="day ${d.getMonth()!==mo?'out':''} ${sameDay(d,today)?'today':''} ${sameDay(d,st.sel)?'sel':''}" data-day="${+d}" aria-label="${d.toDateString()}"><span>${d.getDate()}</span><span class="dots">${'<i></i>'.repeat(Math.min(made,4))}${'<i class="d"></i>'.repeat(Math.min(due,4))}</span></button>`}
-  const s=st.sel,list=sorted(all.filter(n=>sameDay(new Date(n.created),s)||(occ[key(s)]&&occ[key(s)].has(n.id))));
+    const due=occ[key(d)]?occ[key(d)].size:0;
+    cells+=`<button class="day ${d.getMonth()!==mo?'out':''} ${sameDay(d,today)?'today':''} ${sameDay(d,st.sel)?'sel':''}" data-day="${+d}" aria-label="${d.toDateString()}"><span>${d.getDate()}</span><span class="dots">${'<i class="d"></i>'.repeat(Math.min(due,4))}</span></button>`}
+  const s=st.sel,list=all.filter(n=>occ[key(s)]&&occ[key(s)].has(n.id)).sort((a,b)=>Date.parse(a.due)-Date.parse(b.due));
   view.className='wrap feedwrap';
   view.innerHTML=`<div class="calhead"><h2>${c.toLocaleDateString([], {month:'long',year:'numeric'})}</h2><button class="ib" data-cal="-1" aria-label="Previous month">${I('l')}</button><button class="btn" data-cal="0">Today</button><button class="ib" data-cal="1" aria-label="Next month">${I('r')}</button></div>
 <div class="grid">${['S','M','T','W','T','F','S'].map(d=>`<div class="dow">${d}</div>`).join('')}${cells}</div>
-<div class="legend"><span><i></i>Captured</span><span><i class="d"></i>Due</span></div>
+<div class="legend"><span><i class="d"></i>Reminder or task due</span></div>
 <h3 style="margin:0 0 10px">${s.toLocaleDateString([], {weekday:'long',month:'long',day:'numeric'})}</h3>
-${list.length?`<div class="list">${list.map(card).join('')}</div>`:`<p class="meta">Nothing captured or due this day.</p>`}`;
+${list.length?`<div class="list">${list.map(card).join('')}</div>`:`<p class="meta">Nothing due this day.</p>`}`;
 }
 let deckIds=[];
 function vSwipe(){
